@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import re
 import sys
 from pathlib import Path
@@ -30,6 +31,51 @@ logger = logging.getLogger("ondotrip")
 def _sanitize_filename(name: str) -> str:
     """파일 이름에 사용할 수 없는 문자를 안전한 언더스코어로 치환한다."""
     return re.sub(r'[\\/:*?"<>|\s]+', "_", name).strip("_")[:60] or "post"
+
+
+def _escape_slack(val: object) -> str:
+    """Slack mrkdwn 링크 깨짐을 막기 위해 특수문자를 이스케이프한다."""
+    return str(val or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _notify_slack_local_posts(published_posts: list[dict[str, Any]]) -> bool:
+    """로컬 직접 실행으로 블로그 게시 완료 시 Slack DM 본문으로 알림을 전송한다."""
+    # GitHub Actions에서는 워크플로우 마지막 스텝이 통합 보고하므로 중복 알림 방지
+    if os.getenv("GITHUB_ACTIONS", "").lower() == "true" or not published_posts:
+        return False
+    if not config.SLACK_BOT_TOKEN or not config.SLACK_REPORT_CHANNEL_ID:
+        return False
+
+    lines = [
+        f":white_check_mark: *OndoTrip 블로그 게시 완료 ({len(published_posts)}건, 로컬 실행)*",
+    ]
+    for idx, post in enumerate(published_posts, start=1):
+        cat = _escape_slack(post.get("blog_category") or "기타")
+        title = _escape_slack(post.get("title") or "(제목 없음)")
+        status_label = "임시저장" if post.get("is_draft") else "공개 발행"
+        post_url = str(post.get("post_url") or "").strip()
+        link_part = f" — <{post_url}|블로그 글 보기>" if post_url else ""
+        lines.append(f"  {idx}. [{cat}] *{title}* ({status_label}){link_part}")
+
+    try:
+        session = config.create_http_session()
+        resp = session.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={
+                "Authorization": f"Bearer {config.SLACK_BOT_TOKEN}",
+                "Content-Type": "application/json; charset=utf-8",
+            },
+            json={"channel": config.SLACK_REPORT_CHANNEL_ID, "text": "\n".join(lines)},
+            timeout=15,
+        )
+        data = resp.json()
+        if not data.get("ok"):
+            logger.warning("Slack 알림 전송 실패: %s", data.get("error"))
+            return False
+        return True
+    except Exception as exc:
+        logger.warning("Slack 알림 전송 중 예외 (무시됨): %s", exc)
+        return False
 
 
 def _save_preview_html(post: dict[str, Any]) -> Path:
@@ -263,6 +309,9 @@ def _process_single_item(
         is_draft=is_draft,
         category=post["blog_category"],
     )
+    post["post_id"] = post_id
+    post["post_url"] = post_url
+    post["is_draft"] = is_draft
     status_label = "임시저장(Draft)" if is_draft else "공개 발행(Published)"
     print(f"- Blogger 업로드 완료 [{status_label}] -> ID: {post_id}")
     if post_url:
@@ -335,6 +384,7 @@ def _run_auto_mode(
     since_last_journey = int(stats["since_last_journey"])
     total_processed = int(stats["total"])
     processed_cids: set[str] = set()
+    uploaded_posts: list[dict[str, Any]] = []
     is_draft = not args.publish
 
     for idx in range(1, args.count + 1):
@@ -406,7 +456,7 @@ def _run_auto_mode(
 
         item, bundle = picked
         processed_cids.add(str(item["contentid"]))
-        _process_single_item(
+        post = _process_single_item(
             tour_client,
             blogger,
             item,
@@ -417,6 +467,8 @@ def _run_auto_mode(
             is_draft=is_draft,
             preloaded_bundle=bundle,
         )
+        if not args.preview_only:
+            uploaded_posts.append(post)
 
         counts[target_cat] = counts.get(target_cat, 0) + 1
         total_processed += 1
@@ -425,6 +477,8 @@ def _run_auto_mode(
         else:
             since_last_journey += 1
 
+    if uploaded_posts and _notify_slack_local_posts(uploaded_posts):
+        print(f"\n- Slack 알림 전송 완료 ({len(uploaded_posts)}건)")
     return 0
 
 
@@ -525,8 +579,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     is_draft = not args.publish
+    uploaded_posts: list[dict[str, Any]] = []
     for idx, item in enumerate(selected, start=1):
-        _process_single_item(
+        post = _process_single_item(
             tour_client,
             blogger,
             item,
@@ -536,7 +591,11 @@ def main(argv: list[str] | None = None) -> int:
             preview_only=args.preview_only,
             is_draft=is_draft,
         )
+        if not args.preview_only:
+            uploaded_posts.append(post)
 
+    if uploaded_posts and _notify_slack_local_posts(uploaded_posts):
+        print(f"\n- Slack 알림 전송 완료 ({len(uploaded_posts)}건)")
     return 0
 
 

@@ -34,6 +34,10 @@ CLIENT_SECRET_PATH = (
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
 
+# Slack 완료 보고 설정 (로컬 직접 실행 시 사용, GitHub Actions에서는 워크플로우 스텝이 보고)
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "").strip()
+SLACK_REPORT_CHANNEL_ID = os.getenv("SLACK_REPORT_CHANNEL_ID", "").strip()
+
 # 제외할 관광타입 (15: 일회성 행사/공연/축제 제외)
 EXCLUDED_CONTENT_TYPES: set[str] = {"15"}
 
