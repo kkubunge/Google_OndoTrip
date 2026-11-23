@@ -91,7 +91,7 @@
 
 ## 클라우드 무인 자동 실행 (Cloudflare Workers Cron + GitHub Actions)
 
-로컬 PC 전원을 켜두지 않아도 [`Slack_AIbot`](https://github.com/kkubunge/Slack_AIbot)의 Cloudflare Workers Cron(`0 1 * * *`, **매일 오전 10:00 KST**)이 GitHub Actions([`.github/workflows/daily_post.yml`](.github/workflows/daily_post.yml))를 자동 실행하여 **즉시 공개 발행(`publish: true`)** 하고, 새로 발행된 글의 카테고리·제목·공개 링크를 Slack DM으로 자동 보고합니다.
+로컬 PC 전원을 켜두지 않아도 [`Slack_AutoBot`](https://github.com/kkubunge/Slack_AutoBot)의 Cloudflare Workers Cron(`0 1 * * *`, **매일 오전 10:00 KST**)이 GitHub Actions([`.github/workflows/daily_post.yml`](.github/workflows/daily_post.yml))를 자동 실행하여 **즉시 공개 발행(`publish: true`)** 하고, 새로 발행된 글의 카테고리·제목·공개 링크를 Slack DM으로 자동 보고합니다.
 
 ### 필수 GitHub Repository Secrets (`Settings → Secrets and variables → Actions`)
 
