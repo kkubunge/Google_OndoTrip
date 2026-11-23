@@ -9,9 +9,9 @@ on:
         default: "5"
         type: string
       publish:
-        description: "즉시 공개 발행 여부 (false면 임시저장)"
+        description: "즉시 공개 발행 여부 (기본 true: 자동 공개 게시, false면 임시저장)"
         required: false
-        default: false
+        default: true
         type: boolean
       preview_only:
         description: "로컬 HTML 미리보기만 생성 (업로드 없음)"
@@ -95,13 +95,20 @@ jobs:
           INPUT_STATUS_ONLY: ${{ inputs.status_only }}
         run: |
           set -o pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("posted_history.json")
+          before_keys = list(json.loads(p.read_text(encoding="utf-8")).keys()) if p.is_file() else []
+          Path("/tmp/ondotrip_before.json").write_text(json.dumps(before_keys, ensure_ascii=False), encoding="utf-8")
+          PY
           if [ "$INPUT_STATUS_ONLY" = "true" ]; then
             python main.py --status | tee /tmp/ondotrip_run.log
           elif [ "$INPUT_PREVIEW_ONLY" = "true" ]; then
             python main.py --mode auto --count "${INPUT_COUNT}" --preview-only | tee /tmp/ondotrip_run.log
           else
             ARGS=(--mode auto --count "${INPUT_COUNT}")
-            if [ "$INPUT_PUBLISH" = "true" ]; then
+            if [ "$INPUT_PUBLISH" != "false" ]; then
               ARGS+=(--publish)
             fi
             python main.py "${ARGS[@]}" | tee /tmp/ondotrip_run.log
@@ -141,6 +148,9 @@ jobs:
           import urllib.request
           from pathlib import Path
 
+          def _esc(val: object) -> str:
+              return str(val or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
           token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
           channel = os.environ.get("TARGET_CHANNEL", "").strip()
           if not token or not channel:
@@ -149,28 +159,56 @@ jobs:
 
           job_status = os.environ.get("JOB_STATUS", "unknown")
           ok = job_status == "success"
-          badge = ":white_check_mark: *OndoTrip 클라우드 실행 완료*" if ok else f":x: *OndoTrip 클라우드 실행 실패 ({job_status})*"
+          is_status = os.environ.get("INPUT_STATUS_ONLY") == "true"
+          is_preview = os.environ.get("INPUT_PREVIEW_ONLY") == "true"
 
-          if os.environ.get("INPUT_STATUS_ONLY") == "true":
+          before_path = Path("/tmp/ondotrip_before.json")
+          before_keys = set(json.loads(before_path.read_text(encoding="utf-8"))) if before_path.is_file() else set()
+          hist_path = Path("posted_history.json")
+          after_data = json.loads(hist_path.read_text(encoding="utf-8")) if hist_path.is_file() else {}
+          if not isinstance(after_data, dict):
+              after_data = {}
+          new_items = [item for cid, item in after_data.items() if cid not in before_keys and isinstance(item, dict)]
+
+          if not ok:
+              badge = f":x: *OndoTrip 클라우드 실행 실패 ({job_status})*"
+          elif new_items:
+              badge = f":white_check_mark: *OndoTrip 자동 발행 완료 ({len(new_items)}건)*"
+          else:
+              badge = ":white_check_mark: *OndoTrip 클라우드 실행 완료*"
+
+          if is_status:
               mode_desc = "누적 현황 조회 (--status)"
-          elif os.environ.get("INPUT_PREVIEW_ONLY") == "true":
+          elif is_preview:
               mode_desc = f"미리보기 생성 ({os.environ.get('INPUT_COUNT', '5')}건)"
           else:
-              pub = "공개 발행" if os.environ.get("INPUT_PUBLISH") == "true" else "임시저장(Draft)"
+              pub = "임시저장(Draft)" if os.environ.get("INPUT_PUBLISH") == "false" else "공개 발행"
               mode_desc = f"자동 포스팅 {os.environ.get('INPUT_COUNT', '5')}건 ({pub})"
-
-          log_path = Path("/tmp/ondotrip_run.log")
-          tail_text = ""
-          if log_path.is_file():
-              lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
-              tail_text = "\n".join(lines[-20:]).strip()
 
           msg_lines = [
               badge,
               f"• 작업: {mode_desc}",
           ]
-          if tail_text:
-              msg_lines.append(f"• *실행 요약*:\n```\n{tail_text[:2500]}\n```")
+
+          if new_items:
+              msg_lines.append(f"• *이번 실행 발행 글 ({len(new_items)}건)*:")
+              for idx, item in enumerate(new_items, start=1):
+                  cat = _esc(item.get("category") or "기타")
+                  title = _esc(item.get("title") or "(제목 없음)")
+                  st = "임시저장" if item.get("is_draft") else "공개 발행"
+                  post_url = str(item.get("post_url") or "").strip()
+                  link_part = f" — <{post_url}|블로그 글 보기>" if post_url else ""
+                  msg_lines.append(f"  {idx}. [{cat}] *{title}* ({st}){link_part}")
+              msg_lines.append(f"• 누적 발행: 총 {len(after_data)}건")
+
+          if (not ok) or is_status or is_preview or (not new_items):
+              log_path = Path("/tmp/ondotrip_run.log")
+              if log_path.is_file():
+                  lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+                  tail_text = "\n".join(lines[-18:]).strip()
+                  if tail_text:
+                      msg_lines.append(f"• *실행 요약*:\n```\n{tail_text[:2500]}\n```")
+
           msg_lines.append(f"<{os.environ.get('RUN_URL', '')}|GitHub Actions 실행 로그 보기>")
 
           data = json.dumps({"channel": channel, "text": "\n".join(msg_lines)}).encode("utf-8")

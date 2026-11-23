@@ -91,7 +91,7 @@
 
 ## 클라우드 무인 자동 실행 (Cloudflare Workers Cron + GitHub Actions)
 
-로컬 PC 전원을 켜두지 않아도 [`Slack_AIbot`](https://github.com/kkubunge/Slack_AIbot)의 Cloudflare Workers Cron(`0 1 * * *`, **매일 오전 10:00 KST**)이 GitHub Actions([`.github/workflows/daily_post.yml`](.github/workflows/daily_post.yml))를 자동 실행하고, 실행 결과를 Slack DM으로 보고합니다.
+로컬 PC 전원을 켜두지 않아도 [`Slack_AIbot`](https://github.com/kkubunge/Slack_AIbot)의 Cloudflare Workers Cron(`0 1 * * *`, **매일 오전 10:00 KST**)이 GitHub Actions([`.github/workflows/daily_post.yml`](.github/workflows/daily_post.yml))를 자동 실행하여 **즉시 공개 발행(`publish: true`)** 하고, 새로 발행된 글의 카테고리·제목·공개 링크를 Slack DM으로 자동 보고합니다.
 
 ### 필수 GitHub Repository Secrets (`Settings → Secrets and variables → Actions`)
 
@@ -103,6 +103,7 @@
 | `GEMINI_API_KEY` | Gemini API 키 |
 | `GOOGLE_TOKEN_JSON` | 로컬 인증 완료된 `token.json` 파일 내용 전체 (`refresh_token` 포함) |
 | `SLACK_BOT_TOKEN` | 완료/실패 보고용 Slack Bot Token (`xoxb-...`) |
+| `SLACK_REPORT_CHANNEL_ID` | GitHub Actions 수동 실행 시 기본 보고 채널/DM ID (선택, 예: `D0CL64CQGJY`) |
 
 > [!IMPORTANT]
 > Google Cloud Console의 **OAuth 동의 화면**이 "테스트" 상태이면 Refresh Token이 7일마다 만료됩니다. 장기간 무인 실행을 위해서는 동의 화면 게시 상태를 **프로덕션**으로 전환해 두는 것을 권장합니다.
