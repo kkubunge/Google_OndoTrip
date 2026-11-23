@@ -1,0 +1,177 @@
+<!--
+  Blogger 관리자 > 레이아웃 > 사이드바 > HTML/JavaScript 가젯에
+  아래 코드를 그대로 복사해 붙여넣으면 접기/펼치기(아코디언) 방식의
+  '그날의 장소 / 그날의 미식 / 그날의 쉼터 / 그날의 여정' 및 하위 지역 메뉴가 표시됩니다.
+-->
+<style>
+  .ondo-cat-wrap {
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    padding: 4px 0;
+  }
+  .ondo-cat-group {
+    border-bottom: 1px solid #e5e7eb;
+    padding: 6px 0;
+  }
+  .ondo-cat-group:last-child {
+    border-bottom: none;
+  }
+  .ondo-cat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .ondo-cat-title {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 700;
+    color: #111827;
+    text-decoration: none;
+    padding: 6px 4px;
+    line-height: 1.4;
+  }
+  .ondo-cat-title:hover,
+  .ondo-cat-title.is-active {
+    color: #2563eb;
+  }
+  .ondo-cat-toggle {
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    color: #4b5563;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 9px;
+    border-radius: 6px;
+    cursor: pointer;
+    line-height: 1.3;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .ondo-cat-toggle:hover {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border-color: #bfdbfe;
+  }
+  .ondo-sub-list {
+    display: none;
+    flex-wrap: wrap;
+    gap: 6px;
+    list-style: none;
+    margin: 8px 0 4px;
+    padding: 0 4px;
+  }
+  .ondo-cat-group.is-open .ondo-sub-list {
+    display: flex;
+  }
+  .ondo-sub-list li a {
+    display: inline-block;
+    font-size: 12px;
+    color: #4b5563;
+    background: #f3f4f6;
+    padding: 4px 10px;
+    border-radius: 999px;
+    text-decoration: none;
+    transition: background 0.15s, color 0.15s;
+  }
+  .ondo-sub-list li a:hover,
+  .ondo-sub-list li a.is-active {
+    background: #dbeafe;
+    color: #1d4ed8;
+    font-weight: 600;
+  }
+</style>
+
+<div class="ondo-cat-wrap" id="ondo-category-menu"></div>
+
+<script>
+  (function () {
+    var categories = [
+      "그날의 장소",
+      "그날의 미식",
+      "그날의 쉼터",
+      "그날의 여정"
+    ];
+    var regions = [
+      "서울", "경기", "인천", "강원",
+      "충북", "충남", "대전", "세종",
+      "전북", "전남", "광주",
+      "경북", "경남", "대구", "부산", "울산",
+      "제주"
+    ];
+
+    var root = document.getElementById("ondo-category-menu");
+    if (!root) return;
+
+    var currentLabel = "";
+    try {
+      var match = window.location.pathname.match(/\/search\/label\/([^/?#]+)/);
+      if (match && match[1]) {
+        currentLabel = decodeURIComponent(match[1]);
+      }
+    } catch (e) {
+      currentLabel = "";
+    }
+
+    function setGroupOpen(group, toggleBtn, isOpen) {
+      if (isOpen) {
+        group.classList.add("is-open");
+        toggleBtn.setAttribute("aria-expanded", "true");
+        toggleBtn.textContent = "지역 \u25be";
+      } else {
+        group.classList.remove("is-open");
+        toggleBtn.setAttribute("aria-expanded", "false");
+        toggleBtn.textContent = "지역 \u25b8";
+      }
+    }
+
+    categories.forEach(function (cat) {
+      var group = document.createElement("div");
+      group.className = "ondo-cat-group";
+
+      var header = document.createElement("div");
+      header.className = "ondo-cat-header";
+
+      var titleLink = document.createElement("a");
+      titleLink.className = "ondo-cat-title";
+      titleLink.href = "/search/label/" + encodeURIComponent(cat);
+      titleLink.textContent = cat;
+      if (currentLabel === cat || currentLabel.indexOf(cat + "-") === 0) {
+        titleLink.classList.add("is-active");
+      }
+
+      var toggleBtn = document.createElement("button");
+      toggleBtn.type = "button";
+      toggleBtn.className = "ondo-cat-toggle";
+
+      var shouldOpen = currentLabel === cat || currentLabel.indexOf(cat + "-") === 0;
+      setGroupOpen(group, toggleBtn, shouldOpen);
+
+      toggleBtn.addEventListener("click", function () {
+        var nowOpen = !group.classList.contains("is-open");
+        setGroupOpen(group, toggleBtn, nowOpen);
+      });
+
+      header.appendChild(titleLink);
+      header.appendChild(toggleBtn);
+      group.appendChild(header);
+
+      var ul = document.createElement("ul");
+      ul.className = "ondo-sub-list";
+
+      regions.forEach(function (reg) {
+        var subLabel = cat + "-" + reg;
+        var li = document.createElement("li");
+        var a = document.createElement("a");
+        a.href = "/search/label/" + encodeURIComponent(subLabel);
+        a.textContent = reg;
+        if (currentLabel === subLabel) {
+          a.classList.add("is-active");
+        }
+        li.appendChild(a);
+        ul.appendChild(li);
+      });
+
+      group.appendChild(ul);
+      root.appendChild(group);
+    });
+  })();
+</script>
