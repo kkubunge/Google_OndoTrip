@@ -109,23 +109,6 @@
 
 ---
 
-## 매일 오전 10시 자동 실행 (Windows 작업 스케줄러)
-
-`OndoTrip_Daily_Auto` 작업으로 매일 오전 10시에 `run_daily.bat`(`main.py --mode auto --count 5`)가 자동 실행되어 임시저장 글 5건을 생성하며, 실행 로그는 `logs/daily_YYYYMMDD.log`에 저장됩니다.
-
-```powershell
-# 예약 상태 확인
-schtasks /Query /TN "OndoTrip_Daily_Auto" /V /FO LIST
-
-# 지금 바로 수동으로 1회 실행
-schtasks /Run /TN "OndoTrip_Daily_Auto"
-
-# 일시 중지 / 다시 활성화 / 삭제
-schtasks /Change /TN "OndoTrip_Daily_Auto" /DISABLE
-schtasks /Change /TN "OndoTrip_Daily_Auto" /ENABLE
-schtasks /Delete /TN "OndoTrip_Daily_Auto" /F
-```
-
 ## 보안 및 저작권 주의사항
 
 - `.env`, `client_secret_*.json`, `token.json`은 `.gitignore`에 등록되어 있으므로 GitHub 등 공개 저장소에 올리지 마세요.
