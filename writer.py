@@ -10,8 +10,37 @@ from typing import Any
 from urllib.parse import quote
 
 import config
+from tour_api import is_valid_image_url
 
 logger = logging.getLogger(__name__)
+
+
+def _check_image_url(
+    url: str,
+    session: Any | None = None,
+    cache: dict[str, bool] | None = None,
+) -> bool:
+    """이미지 URL 유효성을 캐시를 활용해 중복 요청 없이 검사한다."""
+    if not url:
+        return False
+    if cache is not None and url in cache:
+        return cache[url]
+    ok = is_valid_image_url(url, session=session)
+    if cache is not None:
+        cache[url] = ok
+    return ok
+
+
+def _clean_image_caption(raw_name: str, fallback_title: str) -> str:
+    """이미지 파일명 확장자(.jpg 등), 언더스코어, 끝 번호 괄호를 제거해 깔끔한 캡션으로 다듬는다."""
+    text = _clean_text(raw_name)
+    text = re.sub(r"\.(?:jpe?g|png|gif|bmp|webp)$", "", text, flags=re.IGNORECASE)
+    text = text.replace("_", " ")
+    text = re.sub(r"\s*\(\d+\)\s*$", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text or text == "관광지 사진":
+        return fallback_title
+    return text
 
 # 상세소개(detailIntro2) 타입별 한글 라벨 매핑 (KorService2 Ver 4.4 기준)
 INTRO_FIELD_LABELS: list[tuple[str, str]] = [
@@ -538,6 +567,8 @@ def _collect_gallery_urls(
     common: dict[str, Any],
     images: list[dict[str, Any]],
     photo_gallery: list[dict[str, Any]] | None = None,
+    image_session: Any | None = None,
+    image_cache: dict[str, bool] | None = None,
 ) -> tuple[
     str,
     str,
@@ -545,31 +576,36 @@ def _collect_gallery_urls(
     list[dict[str, Any]],
     list[str],
 ]:
-    """대표 이미지, 추가 사진 목록, 대표 승격 시 촬영자 정보, 저작권 코드를 수집한다."""
-    hero_url = _to_https(str(common.get("firstimage") or ""))
+    """실제 HTTP 유효성을 통과한 대표 이미지, 추가 사진 목록, 대표 승격 시 촬영자 정보, 저작권 코드를 수집한다."""
+    raw_hero = _to_https(str(common.get("firstimage") or ""))
+    hero_url = ""
+    seen_urls: set[str] = set()
+    if raw_hero:
+        seen_urls.add(raw_hero)
+        if _check_image_url(raw_hero, image_session, image_cache):
+            hero_url = raw_hero
+        else:
+            logger.info("깨진 대표 이미지 URL 건너뜀: %s", raw_hero)
+
     hero_photographer = ""
     copyright_codes: list[str] = []
     if common.get("cpyrhtDivCd"):
         copyright_codes.append(str(common["cpyrhtDivCd"]).strip())
 
     kor_gallery: list[dict[str, str]] = []
-    seen_urls: set[str] = set()
-    if hero_url:
-        seen_urls.add(hero_url)
-
     for img in images:
         orig_url = _to_https(str(img.get("originimgurl") or ""))
-        if not orig_url:
+        if not orig_url or orig_url in seen_urls:
+            continue
+        seen_urls.add(orig_url)
+        if not _check_image_url(orig_url, image_session, image_cache):
+            logger.info("깨진 추가 이미지 URL 건너뜀: %s", orig_url)
             continue
         if img.get("cpyrhtDivCd"):
             copyright_codes.append(str(img["cpyrhtDivCd"]).strip())
         if not hero_url:
             hero_url = orig_url
-            seen_urls.add(orig_url)
             continue
-        if orig_url in seen_urls:
-            continue
-        seen_urls.add(orig_url)
         kor_gallery.append(
             {
                 "url": orig_url,
@@ -585,6 +621,9 @@ def _collect_gallery_urls(
         if not p_url or p_url in seen_urls:
             continue
         seen_urls.add(p_url)
+        if not _check_image_url(p_url, image_session, image_cache):
+            logger.info("깨진 관광사진 URL 건너뜀: %s", p_url)
+            continue
         photographer = _clean_text(item.get("photographer")) or "한국관광공사"
         p_title = _clean_text(item.get("title")) or "국내 여행 풍경"
         p_date = _clean_text(item.get("photo_date"))
@@ -633,8 +672,7 @@ def _build_inline_photos(
 
     normalized_kor: list[dict[str, Any]] = []
     for g in kor_gallery:
-        g_name = g.get("name") or ""
-        label = spot_title if (not g_name or g_name == "관광지 사진") else g_name
+        label = _clean_image_caption(g.get("name") or "", spot_title)
         normalized_kor.append(
             {
                 "url": g["url"],
@@ -702,7 +740,10 @@ def _resolve_copyright_notice(
 
 
 def _render_extra_info_html(
-    content_type_id: str, info_list: list[dict[str, Any]]
+    content_type_id: str,
+    info_list: list[dict[str, Any]],
+    image_session: Any | None = None,
+    image_cache: dict[str, bool] | None = None,
 ) -> str:
     """반복정보(detailInfo2)를 미니멀 에디토리얼 톤 카드로 렌더링한다."""
     if not info_list:
@@ -714,6 +755,9 @@ def _render_extra_info_html(
             subname = _clean_text(item.get("subname"))
             suboverview = _format_html_text(item.get("subdetailoverview"))
             subimg = _to_https(str(item.get("subdetailimg") or ""))
+            if subimg and not _check_image_url(subimg, image_session, image_cache):
+                logger.info("깨진 코스 경유지 이미지 URL 건너뜀: %s (%s)", subimg, subname)
+                subimg = ""
             if not (subname or suboverview):
                 continue
             img_html = (
@@ -819,9 +863,17 @@ def generate_blog_post(
 
     info_rows = _collect_info_rows(common, intro)
     pet_rows = _collect_pet_rows(pet_info)
-    hero_url, hero_photographer, kor_gallery, photo_cards, copyright_codes = (
-        _collect_gallery_urls(common, images, photo_gallery)
-    )
+    image_cache: dict[str, bool] = {}
+    with config.create_http_session() as image_session:
+        hero_url, hero_photographer, kor_gallery, photo_cards, copyright_codes = (
+            _collect_gallery_urls(
+                common,
+                images,
+                photo_gallery,
+                image_session=image_session,
+                image_cache=image_cache,
+            )
+        )
     inline_photos = _build_inline_photos(
         kor_gallery, photo_cards, spot_title=title, max_photos=6
     )
@@ -967,7 +1019,13 @@ def generate_blog_post(
     )
 
     # 5. 추가 상세 안내 및 반려동물 안내
-    extra_info_html = _render_extra_info_html(ctype, info_list)
+    with config.create_http_session() as extra_image_session:
+        extra_info_html = _render_extra_info_html(
+            ctype,
+            info_list,
+            image_session=extra_image_session,
+            image_cache=image_cache,
+        )
     pet_html = ""
     if pet_rows:
         pet_items_html = "".join(

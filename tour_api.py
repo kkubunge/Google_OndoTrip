@@ -38,6 +38,69 @@ _SPOT_SUFFIX_RE = re.compile(
     r"(수목원|박물관|해수욕장|전망대|스카이워크|공원|둘레길|미술관|기념관|체험관)$"
 )
 _PAREN_RE = re.compile(r"\([^)]*\)|\[[^\]]*\]")
+_IMAGE_MAGIC_PREFIXES: tuple[bytes, ...] = (
+    b"\xff\xd8",  # JPEG
+    b"\x89PNG",   # PNG
+    b"GIF8",      # GIF
+    b"BM",        # BMP
+)
+
+
+def _has_image_magic(head: bytes) -> bool:
+    """앞부분 바이트가 실제 이미지 파일 시그니처인지 확인한다."""
+    if not head:
+        return False
+    if any(head.startswith(sig) for sig in _IMAGE_MAGIC_PREFIXES):
+        return True
+    return len(head) >= 12 and head[:4] == b"RIFF" and head[8:12] == b"WEBP"
+
+
+def is_valid_image_url(
+    url: str,
+    session: requests.Session | None = None,
+    timeout: int = 8,
+) -> bool:
+    """실제 HTTP HEAD/GET 검증으로 404 등 깨진 이미지 URL을 차단한다."""
+    cleaned = str(url or "").strip()
+    if not cleaned.startswith(("http://", "https://")):
+        return False
+
+    owns_session = session is None
+    sess = session or config.create_http_session()
+    try:
+        try:
+            head_resp = sess.head(cleaned, timeout=timeout, allow_redirects=True)
+            if head_resp.status_code == 200:
+                ct = str(head_resp.headers.get("Content-Type") or "").lower()
+                cl_raw = str(head_resp.headers.get("Content-Length") or "").strip()
+                cl_ok = (not cl_raw.isdigit()) or int(cl_raw) > 0
+                if ct.startswith("image/") and cl_ok:
+                    return True
+            if head_resp.status_code in (404, 410):
+                return False
+        except Exception:
+            pass
+
+        try:
+            with sess.get(
+                cleaned,
+                headers={"Range": "bytes=0-31"},
+                stream=True,
+                timeout=timeout,
+                allow_redirects=True,
+            ) as get_resp:
+                if get_resp.status_code not in (200, 206):
+                    return False
+                ct = str(get_resp.headers.get("Content-Type") or "").lower()
+                chunk = next(get_resp.iter_content(chunk_size=32), b"")
+                if _has_image_magic(chunk):
+                    return True
+                return ct.startswith("image/") and len(chunk) > 0
+        except Exception:
+            return False
+    finally:
+        if owns_session:
+            sess.close()
 
 
 class TourAPIError(RuntimeError):
@@ -273,6 +336,9 @@ class PhotoGalleryClient:
                 ):
                     continue
                 if not self._matches_location(addr1, gal_loc, gal_kw):
+                    continue
+                if not is_valid_image_url(https_url, session=self.session):
+                    logger.info("깨진 관광사진 URL 건너뜀: %s (%s)", https_url, gal_title)
                     continue
 
                 seen_ids.add(cid)
