@@ -1072,9 +1072,9 @@ def _render_course_overview_map_html(
         "if(!window.L||!stops.length)return;"
         'el.innerHTML="";'
         "var map=L.map(el,{scrollWheelZoom:false});"
-        'var baseLayer=L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",{subdomains:"abcd",maxZoom:19,attribution:"&copy; OpenStreetMap &copy; CARTO"}).addTo(map);'
+        'var baseLayer=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",{maxZoom:18,attribution:"Tiles &copy; Esri"}).addTo(map);'
         "var tileErr=0,switched=false;"
-        'baseLayer.on("tileerror",function(){tileErr++;if(!switched&&tileErr>=2){switched=true;map.removeLayer(baseLayer);L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",{maxZoom:18,attribution:"Tiles &copy; Esri"}).addTo(map);}});'
+        'baseLayer.on("tileerror",function(){tileErr++;if(!switched&&tileErr>=2){switched=true;map.removeLayer(baseLayer);L.tileLayer("https://tile.openstreetmap.de/{z}/{x}/{y}.png",{maxZoom:18,attribution:"&copy; OpenStreetMap"}).addTo(map);}});'
         "var pts=[];"
         "stops.forEach(function(s){"
         "var ll=[s.lat,s.lon];pts.push(ll);"
