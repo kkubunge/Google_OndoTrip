@@ -38,16 +38,15 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "").strip()
 SLACK_REPORT_CHANNEL_ID = os.getenv("SLACK_REPORT_CHANNEL_ID", "").strip()
 
-# 제외할 관광타입 (15: 일회성 행사/공연/축제 제외)
-EXCLUDED_CONTENT_TYPES: set[str] = {"15"}
+# 제외할 관광타입 (15: 일회성 행사/공연/축제 제외, 32: 숙박 제외)
+EXCLUDED_CONTENT_TYPES: set[str] = {"15", "32"}
 
-# 한국관광공사 국문 관광정보 관광타입(ContentTypeId) 매핑
+# 한국관광공사 국문 관광정보 관광타입(ContentTypeId) 매핑 (업로드 허용 타입만 포함)
 CONTENT_TYPE_MAP: dict[str, str] = {
     "관광지": "12",
     "문화시설": "14",
     "여행코스": "25",
     "레포츠": "28",
-    "숙박": "32",
     "쇼핑": "38",
     "음식점": "39",
     "맛집": "39",
@@ -63,13 +62,13 @@ CONTENT_TYPE_NAME_MAP: dict[str, str] = {
     "39": "음식점",
 }
 
-# 블로그 공식 4대 카테고리
+# 블로그 공식 3대 활성 카테고리 (과거 '그날의 쉼터'는 이력 호환용으로만 보존)
 BLOG_CATEGORIES: tuple[str, ...] = (
     "그날의 장소",
     "그날의 미식",
-    "그날의 쉼터",
     "그날의 여정",
 )
+ARCHIVED_BLOG_CATEGORIES: tuple[str, ...] = ("그날의 쉼터",)
 
 CATEGORY_ALIAS_MAP: dict[str, str] = {
     "장소": "그날의 장소",
@@ -84,15 +83,6 @@ CATEGORY_ALIAS_MAP: dict[str, str] = {
     "카페": "그날의 미식",
     "맛집": "그날의 미식",
     "음식점": "그날의 미식",
-    "쉼터": "그날의 쉼터",
-    "그날의 쉼터": "그날의 쉼터",
-    "그날의쉼터": "그날의 쉼터",
-    "숙박": "그날의 쉼터",
-    "캠핑": "그날의 쉼터",
-    "캠핑장": "그날의 쉼터",
-    "글램핑": "그날의 쉼터",
-    "펜션": "그날의 쉼터",
-    "호텔": "그날의 쉼터",
     "여정": "그날의 여정",
     "그날의 여정": "그날의 여정",
     "그날의여정": "그날의 여정",
@@ -106,19 +96,17 @@ CONTENT_TYPE_TO_CATEGORY: dict[str, str] = {
     "28": "그날의 장소",
     "38": "그날의 장소",
     "39": "그날의 미식",
-    "32": "그날의 쉼터",
     "25": "그날의 여정",
 }
 
 CATEGORY_DEFAULT_TYPE: dict[str, str] = {
     "그날의 장소": "관광지",
     "그날의 미식": "음식점",
-    "그날의 쉼터": "숙박",
     "그날의 여정": "여행코스",
 }
 
-# 레포츠(28)/관광지(12)로 등록되어 있어도 숙박·캠핑장 성격이면 '그날의 쉼터'로 분류
-SHELTER_TITLE_KEYWORDS: tuple[str, ...] = (
+# 관광지(12)/레포츠(28)로 등록되어 있어도 제목 기준 숙박·캠핑성 시설이면 업로드 제외
+LODGING_TITLE_KEYWORDS: tuple[str, ...] = (
     "캠핑",
     "야영장",
     "오토캠핑",
@@ -127,14 +115,19 @@ SHELTER_TITLE_KEYWORDS: tuple[str, ...] = (
     "펜션",
     "리조트",
     "호텔",
+    "모텔",
+    "호스텔",
+    "유스호스텔",
     "게스트하우스",
     "한옥스테이",
     "풀빌라",
     "민박",
     "콘도",
+    "숙박",
 )
+SHELTER_TITLE_KEYWORDS = LODGING_TITLE_KEYWORDS
 
-# 비여정(장소 + 미식 + 쉼터) 누적 N개마다 여정 1개 업로드 규칙
+# 비여정(장소 + 미식 등) 누적 N개마다 여정 1개 업로드 규칙
 JOURNEY_EVERY_N_POSTS = 10
 
 # 자동 모드(--mode auto)에서 지역 미지정 시 순환할 권역 목록
@@ -155,17 +148,12 @@ AUTO_THEME_KEYWORDS: dict[str, tuple[str, ...]] = {
         "카페", "베이커리", "디저트", "전통찻집", "브런치",
         "한정식", "국수", "해산물",
     ),
-    "그날의 쉼터": (
-        "캠핑장", "글램핑", "한옥", "펜션", "리조트",
-        "오토캠핑", "휴양림", "호텔",
-    ),
 }
 
 # 품질 필터 기준 (카테고리별 최소 개요 글자 수)
 MIN_OVERVIEW_BY_CATEGORY: dict[str, int] = {
     "그날의 장소": 120,
     "그날의 미식": 40,
-    "그날의 쉼터": 40,
     "그날의 여정": 40,
 }
 
@@ -236,14 +224,41 @@ def resolve_content_type(value: str | None) -> str | None:
     if not value:
         return None
     cleaned = str(value).strip()
+    if cleaned in EXCLUDED_CONTENT_TYPES or cleaned in ("행사", "축제", "숙박"):
+        raise ValueError(
+            f"제외 정책에 따라 업로드할 수 없는 관광타입입니다: '{value}'."
+        )
     if cleaned in CONTENT_TYPE_NAME_MAP:
         return cleaned
     if cleaned in CONTENT_TYPE_MAP:
         return CONTENT_TYPE_MAP[cleaned]
+    allowed_codes = [
+        code for code in CONTENT_TYPE_NAME_MAP if code not in EXCLUDED_CONTENT_TYPES
+    ]
     raise ValueError(
         f"지원하지 않는 관광타입입니다: '{value}'. "
-        f"가능한 값: {', '.join(CONTENT_TYPE_MAP.keys())} 또는 코드({', '.join(CONTENT_TYPE_NAME_MAP.keys())})"
+        f"가능한 값: {', '.join(CONTENT_TYPE_MAP.keys())} 또는 코드({', '.join(allowed_codes)})"
     )
+
+
+def is_excluded_content(
+    content_type_id: str | None, title: str | None = None
+) -> tuple[bool, str]:
+    """행사/축제(15), 숙박(32) 및 숙박·캠핑성 콘텐츠 제외 여부를 (제외여부, 사유)로 반환한다."""
+    ctype = str(content_type_id or "").strip()
+    if ctype == "15":
+        return True, "축제/행사 제외 정책"
+    if ctype == "32":
+        return True, "숙박 제외 정책"
+    if ctype in EXCLUDED_CONTENT_TYPES:
+        return True, f"제외 관광타입({ctype}) 정책"
+
+    cleaned_title = str(title or "").strip()
+    if cleaned_title and ctype != "25":
+        if any(kw in cleaned_title for kw in LODGING_TITLE_KEYWORDS):
+            return True, "숙박·캠핑성 콘텐츠 제외 정책"
+
+    return False, ""
 
 
 def resolve_blog_category(
@@ -251,7 +266,7 @@ def resolve_blog_category(
     content_type_id: str | None = None,
     title: str | None = None,
 ) -> str:
-    """사용자 지정 카테고리, 관광타입, 제목에 따라 공식 4대 블로그 카테고리를 반환한다."""
+    """사용자 지정 카테고리 또는 관광타입에 따라 공식 3대 블로그 카테고리를 반환한다."""
     if category:
         cleaned = str(category).strip()
         if cleaned in CATEGORY_ALIAS_MAP:
@@ -261,11 +276,6 @@ def resolve_blog_category(
             f"가능한 값: {', '.join(BLOG_CATEGORIES)}"
         )
     ctype = str(content_type_id or "")
-    if ctype == "32":
-        return "그날의 쉼터"
-    if ctype in ("12", "28") and title:
-        if any(kw in title for kw in SHELTER_TITLE_KEYWORDS):
-            return "그날의 쉼터"
     if ctype in CONTENT_TYPE_TO_CATEGORY:
         return CONTENT_TYPE_TO_CATEGORY[ctype]
     return "그날의 장소"

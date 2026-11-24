@@ -56,7 +56,7 @@ def record_post(
 
 
 def get_category_stats(history_file: Path | None = None) -> dict[str, Any]:
-    """카테고리별 누적 건수와 마지막 여정 이후 장소/미식 누적 건수를 계산한다."""
+    """카테고리별 누적 건수와 마지막 여정 이후 비여정 누적 건수를 계산한다."""
     history = load_history(history_file)
     entries = sorted(
         history.values(),
@@ -64,13 +64,17 @@ def get_category_stats(history_file: Path | None = None) -> dict[str, Any]:
     )
 
     counts: dict[str, int] = {cat: 0 for cat in config.BLOG_CATEGORIES}
+    archived_counts: dict[str, int] = {}
     since_last_journey = 0
 
     for item in entries:
         cat = str(item.get("category") or "그날의 장소")
-        if cat not in counts:
-            cat = "그날의 장소"
-        counts[cat] += 1
+        if cat in config.ARCHIVED_BLOG_CATEGORIES:
+            archived_counts[cat] = archived_counts.get(cat, 0) + 1
+        else:
+            if cat not in counts:
+                cat = "그날의 장소"
+            counts[cat] += 1
         if cat == "그날의 여정":
             since_last_journey = 0
         else:
@@ -80,6 +84,7 @@ def get_category_stats(history_file: Path | None = None) -> dict[str, Any]:
     return {
         "total": len(entries),
         "counts": counts,
+        "archived_counts": archived_counts,
         "since_last_journey": since_last_journey,
         "journey_interval": interval,
         "journey_due": since_last_journey >= interval,
@@ -92,9 +97,9 @@ def choose_next_auto_category(
     since_last_journey: int,
     interval: int | None = None,
 ) -> str:
-    """여정 10:1 규칙과 장소/미식/쉼터 균형을 기준으로 다음 업로드 카테고리를 결정한다."""
+    """여정 10:1 규칙과 장소/미식 균형을 기준으로 다음 업로드 카테고리를 결정한다."""
     limit = interval or config.JOURNEY_EVERY_N_POSTS
     if since_last_journey >= limit:
         return "그날의 여정"
-    regular_categories = ("그날의 장소", "그날의 미식", "그날의 쉼터")
+    regular_categories = ("그날의 장소", "그날의 미식")
     return min(regular_categories, key=lambda cat: counts.get(cat, 0))

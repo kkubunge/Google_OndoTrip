@@ -157,20 +157,21 @@ def _fetch_candidates_page(
 
 
 def _is_candidate_eligible(item: dict[str, Any], category: str | None) -> bool:
-    """축제/행사 제외 및 카테고리 일치 여부를 검사한다."""
+    """축제/행사·숙박 제외 및 카테고리 일치 여부를 검사한다."""
     ctype = str(item.get("contenttypeid", "")).strip()
-    if ctype in config.EXCLUDED_CONTENT_TYPES:
+    title = str(item.get("title", "")).strip()
+    excluded, reason = config.is_excluded_content(ctype, title)
+    if excluded:
         logger.info(
-            "축제/행사 제외 정책으로 건너뜀: %s (%s)",
+            "%s으로 건너뜀: %s (%s)",
+            reason,
             item.get("contentid"),
-            item.get("title", ""),
+            title,
         )
         return False
     if category and ctype:
         target_cat = config.resolve_blog_category(category)
-        item_cat = config.resolve_blog_category(
-            None, ctype, title=str(item.get("title", ""))
-        )
+        item_cat = config.resolve_blog_category(None, ctype, title=title)
         if item_cat != target_cat:
             return False
     return True
@@ -261,7 +262,7 @@ def _process_single_item(
     preview_only: bool,
     is_draft: bool,
     preloaded_bundle: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     """단일 후보의 상세정보를 수집해 HTML을 생성하고 필요 시 Blogger에 업로드한다."""
     cid = str(item["contentid"])
     ctype = item.get("contenttypeid")
@@ -280,6 +281,24 @@ def _process_single_item(
             content_type_id=str(ctype) if ctype else None,
             summary_item=item,
         )
+
+    common = bundle.get("common") or {}
+    bundle_title = str(common.get("title") or item.get("title") or "").strip()
+    excluded, reason = config.is_excluded_content(
+        bundle.get("content_type_id"), bundle_title
+    )
+    if excluded:
+        logger.warning(
+            "[%d/%d] %s으로 업로드를 건너뜁니다: contentId=%s (%s)",
+            idx,
+            total,
+            reason,
+            cid,
+            bundle_title,
+        )
+        print(f"\n[{idx}/{total}] {reason}으로 건너뜀: contentId={cid} ({bundle_title})")
+        return None
+
     post = generate_blog_post(bundle, category_override=category_override)
     preview_path = _save_preview_html(post)
 
@@ -323,12 +342,15 @@ def _print_status() -> None:
     """현재까지 기록된 카테고리별 누적 건수와 다음 여정까지 남은 개수를 출력한다."""
     stats = get_category_stats()
     counts = stats["counts"]
+    archived_counts = stats.get("archived_counts") or {}
     print("=== OndoTrip 발행 현황 ===")
     print(f"- 총 처리 콘텐츠: {stats['total']}개")
     for cat in config.BLOG_CATEGORIES:
         print(f"  · {cat}: {counts.get(cat, 0)}개")
+    for cat, cnt in archived_counts.items():
+        print(f"  · (업로드 중단/과거 이력) {cat}: {cnt}개")
     print(
-        f"- 마지막 여정 이후 장소/미식 누적: "
+        f"- 마지막 여정 이후 비여정 누적: "
         f"{stats['since_last_journey']} / {stats['journey_interval']}개"
     )
     if stats["journey_due"]:
@@ -359,6 +381,14 @@ def _pick_quality_bundle(
             content_type_id=str(ctype) if ctype else None,
             summary_item=item,
         )
+        common = bundle.get("common") or {}
+        bundle_title = str(common.get("title") or item.get("title") or "").strip()
+        excluded, reason = config.is_excluded_content(
+            bundle.get("content_type_id"), bundle_title
+        )
+        if excluded:
+            logger.info("%s으로 건너뜀: %s (%s)", reason, cid, bundle_title)
+            continue
         if not force:
             ok, reason = _passes_quality_check(bundle, target_cat)
             if not ok:
@@ -467,6 +497,8 @@ def _run_auto_mode(
             is_draft=is_draft,
             preloaded_bundle=bundle,
         )
+        if post is None:
+            continue
         if not args.preview_only:
             uploaded_posts.append(post)
 
@@ -490,13 +522,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--category",
         default=None,
-        help="블로그 카테고리 (그날의 장소 / 그날의 미식 / 그날의 쉼터 / 그날의 여정, 줄여서 장소/미식/쉼터/여정)",
+        help="블로그 카테고리 (그날의 장소 / 그날의 미식 / 그날의 여정, 줄여서 장소/미식/여정)",
     )
     parser.add_argument(
         "--mode",
         choices=("auto", "area", "keyword", "content-id"),
         default="area",
-        help="조회 방식 (auto: 장소·미식·쉼터 10개당 여정 1개 자동 배분, 기본값: area)",
+        help="조회 방식 (auto: 장소·미식 10개당 여정 1개 자동 배분, 기본값: area)",
     )
     parser.add_argument(
         "--area",
@@ -506,7 +538,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--type",
         default=None,
-        help="관광타입 이름 또는 코드 (미지정 시 --category에 따라 자동 선택: 장소=관광지, 미식=음식점, 쉼터=숙박, 여정=여행코스)",
+        help="관광타입 이름 또는 코드 (미지정 시 --category에 따라 자동 선택: 장소=관광지, 미식=음식점, 여정=여행코스 / 숙박·행사는 제외)",
     )
     parser.add_argument("--keyword", default=None, help="검색 키워드")
     parser.add_argument("--content-id", default=None, help="특정 콘텐츠 ID 직접 지정")
@@ -556,6 +588,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"- 총 게시물 수: {info.get('posts', {}).get('totalItems', 0)}")
         return 0
 
+    # 제외 카테고리(쉼터 등) 및 제외 관광타입(숙박/32, 행사/15) 사전 차단
+    if args.category:
+        config.resolve_blog_category(args.category)
+    if args.type:
+        config.resolve_content_type(args.type)
+
     tour_client = TourAPIClient()
     blogger = None if args.preview_only else BloggerClient()
 
@@ -591,7 +629,7 @@ def main(argv: list[str] | None = None) -> int:
             preview_only=args.preview_only,
             is_draft=is_draft,
         )
-        if not args.preview_only:
+        if post and not args.preview_only:
             uploaded_posts.append(post)
 
     if uploaded_posts and _notify_slack_local_posts(uploaded_posts):
