@@ -229,6 +229,38 @@ def _extract_json_block(text: str) -> dict[str, Any] | None:
         return None
 
 
+def _summarize_course_text(raw_text: Any, max_chars: int = 210) -> str:
+    """긴 경유지 안내문을 5줄 이내(최대 3문장·max_chars자 이내)로 간결하게 축약한다."""
+    cleaned = _clean_text(raw_text)
+    if not cleaned:
+        return ""
+    flat = re.sub(r"\s+", " ", cleaned).strip()
+    if len(flat) <= max_chars:
+        return flat
+
+    sentences = [
+        s.strip()
+        for s in re.split(r"(?<=[.!?다요])\s+", flat)
+        if s.strip()
+    ]
+    picked: list[str] = []
+    total_len = 0
+    for sent in sentences[:3]:
+        next_len = total_len + (1 if picked else 0) + len(sent)
+        if next_len > max_chars:
+            break
+        picked.append(sent)
+        total_len = next_len
+
+    if picked:
+        return " ".join(picked)
+
+    cut = flat[: max_chars - 1].rsplit(" ", 1)[0].strip()
+    if len(cut) < max_chars // 2:
+        cut = flat[: max_chars - 1].strip()
+    return f"{cut}…"
+
+
 def _build_gemini_prompt(
     title: str,
     blog_category: str,
@@ -239,6 +271,7 @@ def _build_gemini_prompt(
     info_rows: list[tuple[str, str]],
     pet_rows: list[tuple[str, str]],
     photo_keywords: list[str] | None = None,
+    course_stops: list[tuple[str, str]] | None = None,
 ) -> str:
     """20대 여성 에디터 어투의 포토 에세이형 블로그 원고 생성용 Gemini 프롬프트를 만든다."""
     facts_lines = [f"- {label}: {val}" for label, val in info_rows[:12]]
@@ -258,6 +291,20 @@ def _build_gemini_prompt(
     if photo_keywords:
         kw_hint = f"[사진 분위기 참고 키워드] {', '.join(photo_keywords[:8])}\n"
 
+    course_block = ""
+    course_schema_field = ""
+    if blog_category == "그날의 여정" and course_stops:
+        stop_lines = [
+            f"{idx}. {stop_name}: {stop_desc[:400] or '(상세 설명 없음)'}"
+            for idx, (stop_name, stop_desc) in enumerate(course_stops, start=1)
+        ]
+        course_block = "[코스 경유지 정보]\n" + "\n".join(stop_lines) + "\n\n"
+        course_schema_field = (
+            ',\n  "course_summaries": ['
+            f'"[코스 경유지 정보] 순서대로 총 {len(course_stops)}개 경유지를 각각 2~3문장(180자 이내, 5줄 이내, 자연스러운 해요체)으로 핵심만 축약한 소개글 배열"'
+            "]"
+        )
+
     return (
         "당신은 감성적이고 담백한 국내 여행 블로그 '그날의 온도(OndoTrip)'를 운영하는 20대 여성 에디터입니다.\n"
         f"이번 글은 [{blog_category}] 카테고리에 올라갑니다. {category_focus}\n\n"
@@ -273,6 +320,7 @@ def _build_gemini_prompt(
         f"{kw_hint}"
         f"[개요] {overview[:1500]}\n"
         f"[상세정보]\n{facts_text}\n\n"
+        f"{course_block}"
         "반드시 아래 JSON 형식으로만 응답하세요:\n"
         "{\n"
         '  "post_title": "검색에 잘 노출되면서도 자연스러운 20대 여성 블로그 스타일 제목 (35자 내외)",\n'
@@ -292,7 +340,8 @@ def _build_gemini_prompt(
         '      "body": "영업시간·위치·주차·휴무일·동선 등 실제 운영정보 기반 방문 팁을 딱딱하지 않게 녹여 쓴 문단 (3~4문장, 해요체)"\n'
         "    }\n"
         "  ],\n"
-        '  "closing_note": "잔잔한 여운을 남기며 일정을 권하는 마무리 1~2문장 (해요체)"\n'
+        '  "closing_note": "잔잔한 여운을 남기며 일정을 권하는 마무리 1~2문장 (해요체)"'
+        f"{course_schema_field}\n"
         "}"
     )
 
@@ -739,11 +788,88 @@ def _resolve_copyright_notice(
     )
 
 
+def _build_map_urls(
+    title: str,
+    addr1: str,
+    mapx: Any,
+    mapy: Any,
+    span_lon: float = 0.007,
+    span_lat: float = 0.005,
+) -> dict[str, Any]:
+    """OpenStreetMap 임베드 URL과 네이버·카카오·구글 지도 URL을 계산한다."""
+    query_text = f"{title} {addr1}".strip() or title
+    naver_url = f"https://map.naver.com/p/search/{quote(query_text)}" if query_text else ""
+    kakao_search_url = f"https://map.kakao.com/?q={quote(query_text)}" if query_text else ""
+
+    try:
+        lon = float(str(mapx).strip())
+        lat = float(str(mapy).strip())
+    except (TypeError, ValueError):
+        return {"has_coords": False, "naver_url": naver_url, "kakao_url": kakao_search_url}
+
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+        return {"has_coords": False, "naver_url": naver_url, "kakao_url": kakao_search_url}
+
+    bbox = (
+        f"{lon - span_lon:.6f},{lat - span_lat:.6f},"
+        f"{lon + span_lon:.6f},{lat + span_lat:.6f}"
+    )
+    osm_embed_url = (
+        f"https://www.openstreetmap.org/export/embed.html?bbox={quote(bbox, safe=',')}"
+        f"&layer=mapnik&marker={lat:.6f},{lon:.6f}"
+    )
+    kakao_url = f"https://map.kakao.com/link/map/{quote(title or '위치')},{lat:.6f},{lon:.6f}"
+    google_url = f"https://www.google.com/maps/search/?api=1&query={lat:.6f},{lon:.6f}"
+    return {
+        "has_coords": True,
+        "lat": lat,
+        "lon": lon,
+        "osm_embed_url": osm_embed_url,
+        "naver_url": naver_url,
+        "kakao_url": kakao_url,
+        "google_url": google_url,
+    }
+
+
+def _render_mini_map_html(title: str, addr1: str, mapx: Any, mapy: Any) -> str:
+    """코스 경유지 카드 안에 들어가는 컴팩트 OpenStreetMap 미니맵과 지도 링크를 만든다."""
+    info = _build_map_urls(title, addr1, mapx, mapy, span_lon=0.005, span_lat=0.0035)
+    if not info["naver_url"] and not info["has_coords"]:
+        return ""
+
+    mini_btn = (
+        "display:inline-block;padding:6px 11px;border-radius:7px;text-decoration:none;"
+        "font-size:12px;font-weight:600;margin:4px 6px 0 0;"
+    )
+    if not info["has_coords"]:
+        return (
+            '<div style="margin-top:12px;">'
+            f'<a href="{info["naver_url"]}" target="_blank" rel="noopener noreferrer" style="{mini_btn}background:#3d5a4c;color:#ffffff;">네이버 지도</a>'
+            f'<a href="{info["kakao_url"]}" target="_blank" rel="noopener noreferrer" style="{mini_btn}background:#f3ede2;color:#262626;border:1px solid #e2d9cb;">카카오맵</a>'
+            "</div>"
+        )
+
+    return (
+        '<div style="margin-top:14px;">'
+        '<div style="border-radius:10px;overflow:hidden;border:1px solid #e6dfd5;background:#ffffff;">'
+        f'<iframe title="{html.escape(title)} 미니맵" src="{info["osm_embed_url"]}" '
+        'style="width:100%;height:180px;border:0;display:block;" loading="lazy"></iframe>'
+        "</div>"
+        '<div style="margin-top:8px;">'
+        f'<a href="{info["naver_url"]}" target="_blank" rel="noopener noreferrer" style="{mini_btn}background:#3d5a4c;color:#ffffff;">네이버 지도</a>'
+        f'<a href="{info["kakao_url"]}" target="_blank" rel="noopener noreferrer" style="{mini_btn}background:#f3ede2;color:#262626;border:1px solid #e2d9cb;">카카오맵</a>'
+        f'<a href="{info["google_url"]}" target="_blank" rel="noopener noreferrer" style="{mini_btn}background:#ffffff;color:#4a453f;border:1px solid #dcd5ca;">구글 지도</a>'
+        "</div>"
+        "</div>"
+    )
+
+
 def _render_extra_info_html(
     content_type_id: str,
     info_list: list[dict[str, Any]],
     image_session: Any | None = None,
     image_cache: dict[str, bool] | None = None,
+    course_summaries: list[str] | None = None,
 ) -> str:
     """반복정보(detailInfo2)를 미니멀 에디토리얼 톤 카드로 렌더링한다."""
     if not info_list:
@@ -753,26 +879,53 @@ def _render_extra_info_html(
     if content_type_id == "25":
         for idx, item in enumerate(info_list, start=1):
             subname = _clean_text(item.get("subname"))
-            suboverview = _format_html_text(item.get("subdetailoverview"))
+            raw_overview = item.get("subdetailoverview")
+            ai_summary = (
+                course_summaries[idx - 1].strip()
+                if course_summaries and idx - 1 < len(course_summaries)
+                else ""
+            )
+            summary_text = (
+                _summarize_course_text(ai_summary, max_chars=220)
+                if ai_summary
+                else _summarize_course_text(raw_overview, max_chars=210)
+            )
+            sub_addr1 = _clean_text(item.get("sub_addr1"))
             subimg = _to_https(str(item.get("subdetailimg") or ""))
             if subimg and not _check_image_url(subimg, image_session, image_cache):
                 logger.info("깨진 코스 경유지 이미지 URL 건너뜀: %s (%s)", subimg, subname)
                 subimg = ""
-            if not (subname or suboverview):
+            if not (subname or summary_text):
                 continue
+
+            addr_line = (
+                f'<div style="font-size:12.5px;color:#736c63;margin:0 0 10px;">{html.escape(sub_addr1)}</div>'
+                if sub_addr1
+                else ""
+            )
+            summary_html = (
+                f'<div style="font-size:14px;line-height:1.75;color:#4a453f;">{html.escape(summary_text)}</div>'
+                if summary_text
+                else ""
+            )
             img_html = (
                 f'<img src="{html.escape(subimg)}" alt="{html.escape(subname or "코스 사진")}" '
                 'style="display:block;margin:14px auto 0;max-height:520px;width:auto;max-width:100%;height:auto;border-radius:10px;" />'
                 if subimg
                 else ""
             )
+            mini_map_html = _render_mini_map_html(
+                subname,
+                sub_addr1,
+                item.get("sub_mapx"),
+                item.get("sub_mapy"),
+            )
             blocks.append(
                 '<div style="padding:18px 20px;background:#faf8f5;border:1px solid #eae4db;'
-                'border-radius:12px;margin-bottom:14px;">'
+                'border-radius:12px;margin-bottom:16px;">'
                 f'<div style="font-size:12px;font-weight:700;letter-spacing:0.04em;color:#3d5a4c;margin-bottom:4px;">COURSE {idx:02d}</div>'
-                f'<div style="font-size:16px;font-weight:700;color:#262626;margin-bottom:8px;">{html.escape(subname)}</div>'
-                f'<div style="font-size:14.5px;line-height:1.85;color:#4a453f;">{suboverview}</div>'
-                f"{img_html}</div>"
+                f'<div style="font-size:16px;font-weight:700;color:#262626;margin-bottom:4px;">{html.escape(subname)}</div>'
+                f"{addr_line}{summary_html}{img_html}{mini_map_html}</div>"
             )
     else:
         for item in info_list:
@@ -801,24 +954,9 @@ def _render_extra_info_html(
 
 def _render_map_html(title: str, addr1: str, mapx: Any, mapy: Any) -> str:
     """OpenStreetMap 무료 iframe 약도와 정돈된 톤의 길찾기 버튼을 만든다."""
-    try:
-        lon = float(str(mapx).strip())
-        lat = float(str(mapy).strip())
-    except (TypeError, ValueError):
+    info = _build_map_urls(title, addr1, mapx, mapy)
+    if not info["has_coords"]:
         return ""
-
-    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
-        return ""
-
-    bbox = f"{lon - 0.007:.6f},{lat - 0.005:.6f},{lon + 0.007:.6f},{lat + 0.005:.6f}"
-    osm_embed_url = (
-        f"https://www.openstreetmap.org/export/embed.html?bbox={quote(bbox, safe=',')}"
-        f"&layer=mapnik&marker={lat:.6f},{lon:.6f}"
-    )
-    naver_query = quote(f"{title} {addr1}".strip())
-    naver_url = f"https://map.naver.com/p/search/{naver_query}"
-    kakao_url = f"https://map.kakao.com/link/map/{quote(title)},{lat:.6f},{lon:.6f}"
-    google_url = f"https://www.google.com/maps/search/?api=1&query={lat:.6f},{lon:.6f}"
 
     btn_style = (
         "display:inline-block;padding:9px 15px;border-radius:8px;text-decoration:none;"
@@ -828,15 +966,15 @@ def _render_map_html(title: str, addr1: str, mapx: Any, mapy: Any) -> str:
         '<section style="margin:34px 0;">'
         '<h2 style="font-size:18px;font-weight:700;color:#262626;margin:0 0 16px;padding-bottom:10px;border-bottom:1px solid #eae4db;letter-spacing:-0.01em;">위치 및 길찾기</h2>'
         '<div style="border-radius:14px;overflow:hidden;border:1px solid #eae4db;background:#faf8f5;">'
-        f'<iframe title="{html.escape(title)} 위치 지도" src="{osm_embed_url}" '
+        f'<iframe title="{html.escape(title)} 위치 지도" src="{info["osm_embed_url"]}" '
         'style="width:100%;height:320px;border:0;display:block;" loading="lazy"></iframe>'
         "</div>"
         '<div style="margin-top:14px;">'
-        f'<a href="{naver_url}" target="_blank" rel="noopener noreferrer" style="{btn_style}background:#3d5a4c;color:#ffffff;">네이버 지도로 보기</a>'
-        f'<a href="{kakao_url}" target="_blank" rel="noopener noreferrer" style="{btn_style}background:#f3ede2;color:#262626;border:1px solid #e2d9cb;">카카오맵으로 보기</a>'
-        f'<a href="{google_url}" target="_blank" rel="noopener noreferrer" style="{btn_style}background:#ffffff;color:#4a453f;border:1px solid #dcd5ca;">구글 지도로 보기</a>'
+        f'<a href="{info["naver_url"]}" target="_blank" rel="noopener noreferrer" style="{btn_style}background:#3d5a4c;color:#ffffff;">네이버 지도로 보기</a>'
+        f'<a href="{info["kakao_url"]}" target="_blank" rel="noopener noreferrer" style="{btn_style}background:#f3ede2;color:#262626;border:1px solid #e2d9cb;">카카오맵으로 보기</a>'
+        f'<a href="{info["google_url"]}" target="_blank" rel="noopener noreferrer" style="{btn_style}background:#ffffff;color:#4a453f;border:1px solid #dcd5ca;">구글 지도로 보기</a>'
         "</div>"
-        f'<p style="margin:10px 0 0;font-size:12px;color:#8c8378;">위치 좌표 · 위도 {lat:.6f}, 경도 {lon:.6f}</p>'
+        f'<p style="margin:10px 0 0;font-size:12px;color:#8c8378;">위치 좌표 · 위도 {info["lat"]:.6f}, 경도 {info["lon"]:.6f}</p>'
         "</section>"
     )
 
@@ -884,6 +1022,14 @@ def generate_blog_post(
             if kw and kw not in photo_kw_hints:
                 photo_kw_hints.append(kw)
 
+    course_stops: list[tuple[str, str]] = []
+    if ctype == "25" and info_list:
+        for sub in info_list:
+            sub_name = _clean_text(sub.get("subname"))
+            sub_desc = _clean_text(sub.get("subdetailoverview"))
+            if sub_name:
+                course_stops.append((sub_name, sub_desc[:400]))
+
     prompt = _build_gemini_prompt(
         title=title,
         blog_category=blog_category,
@@ -894,6 +1040,7 @@ def generate_blog_post(
         info_rows=info_rows,
         pet_rows=pet_rows,
         photo_keywords=photo_kw_hints,
+        course_stops=course_stops or None,
     )
     editorial = _call_gemini_editorial(prompt)
     if editorial is None:
@@ -913,6 +1060,12 @@ def generate_blog_post(
     lead_paragraph = str(editorial.get("lead_paragraph") or "").strip()
     sections = _normalize_editorial_sections(editorial, overview, title)
     closing_note = str(editorial.get("closing_note") or "").strip()
+    raw_course_summaries = editorial.get("course_summaries")
+    course_summaries = (
+        [str(s).strip() for s in raw_course_summaries]
+        if isinstance(raw_course_summaries, list)
+        else None
+    )
 
     # Blogger 공식 3대 카테고리 + '카테고리-지역' 서브 라벨 부여
     labels = [blog_category]
@@ -1025,6 +1178,7 @@ def generate_blog_post(
             info_list,
             image_session=extra_image_session,
             image_cache=image_cache,
+            course_summaries=course_summaries,
         )
     pet_html = ""
     if pet_rows:

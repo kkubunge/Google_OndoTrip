@@ -611,6 +611,25 @@ class TourAPIClient:
 
         intro = self._safe_call(self.get_detail_intro, cid, ctype, default={})
         info_list = self._safe_call(self.get_detail_info, cid, ctype, default=[])
+        if ctype == "25" and info_list:
+            sub_cache: dict[str, dict[str, Any]] = {}
+            for item in info_list:
+                subcid = str(item.get("subcontentid") or "").strip()
+                if not subcid:
+                    continue
+                if subcid not in sub_cache:
+                    sub_cache[subcid] = self._safe_call(
+                        self.get_detail_common, subcid, default={}
+                    )
+                sub_common = sub_cache[subcid]
+                if not sub_common:
+                    continue
+                item["sub_addr1"] = str(sub_common.get("addr1") or "").strip()
+                item["sub_mapx"] = str(sub_common.get("mapx") or "").strip()
+                item["sub_mapy"] = str(sub_common.get("mapy") or "").strip()
+                if not str(item.get("subdetailoverview") or "").strip() and sub_common.get("overview"):
+                    item["subdetailoverview"] = sub_common["overview"]
+
         images = self._safe_call(self.get_detail_images, cid, default=[])
         pet_info = self._safe_call(self.get_detail_pet_tour, cid, default={})
 
