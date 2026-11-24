@@ -211,7 +211,7 @@ def _build_gemini_prompt(
     pet_rows: list[tuple[str, str]],
     photo_keywords: list[str] | None = None,
 ) -> str:
-    """20대 여성 에디터 어투의 사실 기반 여행 블로그 원고 생성용 Gemini 프롬프트를 만든다."""
+    """20대 여성 에디터 어투의 포토 에세이형 블로그 원고 생성용 Gemini 프롬프트를 만든다."""
     facts_lines = [f"- {label}: {val}" for label, val in info_rows[:12]]
     if pet_rows:
         facts_lines.append(
@@ -220,10 +220,10 @@ def _build_gemini_prompt(
     facts_text = "\n".join(facts_lines) if facts_lines else "- 추가 운영 정보 없음"
 
     category_focus = {
-        "그날의 장소": "공간의 분위기와 볼거리, 산책하거나 천천히 머물기 좋은 포인트 중심으로 써 주세요.",
-        "그날의 미식": "대표 메뉴, 가게 분위기, 식사나 커피 한 잔 즐기기 좋은 포인트를 담아 주세요.",
-        "그날의 여정": "코스 동선, 전체 소요시간, 구간별 풍경과 이동 포인트를 흐름 있게 정리해 주세요.",
-    }.get(blog_category, "여행지 매력과 방문 포인트 중심으로 작성해 주세요.")
+        "그날의 장소": "공간의 첫인상과 산책하며 마주치는 매력, 그리고 방문 전 챙길 실용 정보를 자연스럽게 이어 주세요.",
+        "그날의 미식": "가게 분위기, 대표 메뉴의 매력, 그리고 영업시간·위치·주차 팁을 수다 떨듯 편하게 풀어 주세요.",
+        "그날의 여정": "코스 흐름과 길 위에서 만나는 풍경의 매력, 이동 소요시간·동선 팁을 흐름 있게 담아 주세요.",
+    }.get(blog_category, "공간의 매력과 방문 시 알아두면 좋은 점을 자연스럽게 이어 주세요.")
 
     kw_hint = ""
     if photo_keywords:
@@ -232,10 +232,11 @@ def _build_gemini_prompt(
     return (
         "당신은 감성적이고 담백한 국내 여행 블로그 '그날의 온도(OndoTrip)'를 운영하는 20대 여성 에디터입니다.\n"
         f"이번 글은 [{blog_category}] 카테고리에 올라갑니다. {category_focus}\n\n"
-        "[어투 및 작성 원칙]\n"
+        "[어투 및 구성 원칙]\n"
         "1. 친한 친구나 구독자에게 차분하고 다정하게 추천하듯 자연스러운 해요체(~해요, ~더라고요, ~좋아요, ~추천드려요)로 쓰세요.\n"
-        "2. 과한 이모지, 오글거리는 유행어(대박, 찐맛집, 레전드, 감성 폭발 등), 어색한 AI 번역투, 제목 앞 딱딱한 대괄호([카테고리]) 남발은 피하세요.\n"
-        "3. 오직 아래 한국관광공사 공공데이터(사실 정보)만 바탕으로 작성하세요. 데이터에 없는 요금, 시간, 메뉴, 개인적인 방문 경험담('어제 직접 다녀왔는데' 등)을 절대 지어내지 마세요.\n\n"
+        "2. '좋았던 이유'와 '방문 팁'을 딱딱한 번호 목록으로 따로 쪼개지 말고, 3개의 이야기 문단(sections) 안에 매력과 운영 팁이 함께 녹아 자연스럽게 이어지게 작성하세요.\n"
+        "3. 과한 이모지, 오글거리는 유행어(대박, 찐맛집, 레전드, 감성 폭발 등), 어색한 AI 번역투, 제목 앞 딱딱한 대괄호([카테고리]) 남발은 피하세요.\n"
+        "4. 오직 아래 한국관광공사 공공데이터(사실 정보)만 바탕으로 작성하세요. 데이터에 없는 요금, 시간, 메뉴, 개인적인 방문 경험담('어제 직접 다녀왔는데' 등)을 절대 지어내지 마세요.\n\n"
         f"[장소/코스명] {title}\n"
         f"[블로그 카테고리] {blog_category}\n"
         f"[지역/유형] {region_name} / {category_name}\n"
@@ -248,12 +249,20 @@ def _build_gemini_prompt(
         '  "post_title": "검색에 잘 노출되면서도 자연스러운 20대 여성 블로그 스타일 제목 (35자 내외)",\n'
         '  "subtitle": "제목 아래에 놓일 담백한 한 줄 요약 (20~40자)",\n'
         '  "lead_paragraph": "부드럽게 이야기를 여는 도입 문단 (2~3문장, 자연스러운 해요체)",\n'
-        '  "story_paragraphs": [\n'
-        '    "공공데이터 개요를 자연스러운 해요체로 풀어쓴 본문 첫 번째 문단 (2~4문장)",\n'
-        '    "분위기와 볼거리, 함께 즐길 수 있는 포인트를 이어가는 두 번째 문단 (2~4문장)"\n'
+        '  "sections": [\n'
+        "    {\n"
+        '      "heading": "첫 번째 이야기 소제목 (공간/코스의 첫인상과 분위기, 12~26자)",\n'
+        '      "body": "공간이 좋았던 이유와 분위기를 20대 여성 에디터 말투로 풀어쓴 문단 (3~4문장, 해요체)"\n'
+        "    },\n"
+        "    {\n"
+        '      "heading": "두 번째 이야기 소제목 (매력 포인트와 함께 즐기는 법)",\n'
+        '      "body": "구체적인 매력 포인트, 메뉴나 볼거리, 소소한 즐김 팁을 자연스럽게 섞어 쓴 문단 (3~4문장, 해요체)"\n'
+        "    },\n"
+        "    {\n"
+        '      "heading": "세 번째 이야기 소제목 (다녀오기 전 가볍게 챙길 이야기)",\n'
+        '      "body": "영업시간·위치·주차·휴무일·동선 등 실제 운영정보 기반 방문 팁을 딱딱하지 않게 녹여 쓴 문단 (3~4문장, 해요체)"\n'
+        "    }\n"
         "  ],\n"
-        '  "highlights": ["이곳이 좋았던 매력 포인트 1 (해요체)", "매력 포인트 2 (해요체)", "매력 포인트 3 (해요체)"],\n'
-        '  "visit_tips": ["실제 운영정보 기반 방문 팁 1 (해요체)", "방문 팁 2 (해요체)", "방문 팁 3 (해요체)"],\n'
         '  "closing_note": "잔잔한 여운을 남기며 일정을 권하는 마무리 1~2문장 (해요체)"\n'
         "}"
     )
@@ -284,8 +293,8 @@ def _generate_fallback_copy(
     info_rows: list[tuple[str, str]],
     pet_rows: list[tuple[str, str]],
 ) -> dict[str, Any]:
-    """Gemini 호출이 실패했을 때 공공데이터로 자연스러운 해요체 원고를 구성한다."""
-    story_paragraphs = _split_story_paragraphs(overview)
+    """Gemini 호출이 실패했을 때 이유와 팁이 통합된 자연스러운 해요체 섹션을 구성한다."""
+    story_parts = _split_story_paragraphs(overview)
     sentences = [
         s.strip()
         for s in re.split(r"(?<=[.!?다요])\s+", overview.replace("\n", " "))
@@ -293,27 +302,33 @@ def _generate_fallback_copy(
     ]
     lead = (
         f"{region_name} 나들이를 계획 중이라면 '{title}'에 한 번 들러보시는 건 어떨까요? "
-        + (" ".join(sentences[:2]) if sentences else f"{category_name} 특유의 분위기를 여유롭게 느끼기 좋아요.")
+        + (
+            " ".join(sentences[:2])
+            if sentences
+            else f"{category_name} 특유의 분위기를 여유롭게 느끼기 좋아요."
+        )
     )
 
-    highlights = [
-        f"{region_name}에서 가볍게 들러 분위기를 즐기기 좋은 {category_name}이에요.",
-        (
-            f"{addr}에 자리하고 있어 주변 동선과 함께 묶어 다녀오기 좋아요."
-            if addr
-            else f"{title}만의 차분한 매력과 볼거리를 천천히 둘러보기 좋아요."
-        ),
-        (
-            sentences[2]
-            if len(sentences) > 2
-            else "사계절 언제 찾아도 계절마다 다른 풍경을 마주할 수 있어요."
-        ),
-    ]
-
+    body_1 = (
+        story_parts[0]
+        if story_parts
+        else f"{region_name}에서 가볍게 들러 분위기를 즐기기 좋은 {category_name}이에요."
+    )
     info_dict = dict(info_rows)
-    tips: list[str] = []
+    highlight_extra = ""
+    if "대표 메뉴" in info_dict:
+        highlight_extra = f" 대표 메뉴인 {info_dict['대표 메뉴'].splitlines()[0]}도 함께 살펴보면 더 좋아요."
+    elif "코스 테마" in info_dict:
+        highlight_extra = f" {info_dict['코스 테마'].splitlines()[0]} 테마로 천천히 둘러보기 좋아요."
+    body_2 = (
+        (story_parts[1] if len(story_parts) > 1 else f"{title}만의 차분한 매력과 볼거리를 천천히 즐겨보기 좋아요.")
+        + highlight_extra
+    ).strip()
+
+    tip_sentences: list[str] = []
+    if addr:
+        tip_sentences.append(f"위치는 {addr} 쪽이라 주변 일정과 함께 묶어 다녀오기 편해요.")
     for key in (
-        "대표 메뉴",
         "영업시간",
         "이용시간",
         "코스 총 소요시간",
@@ -325,22 +340,72 @@ def _generate_fallback_copy(
         "입장료",
     ):
         if key in info_dict:
-            tips.append(f"{key}은(는) {info_dict[key].splitlines()[0]} 기준이라 방문 전 참고하시면 좋아요.")
+            tip_sentences.append(f"{key}은(는) {info_dict[key].splitlines()[0]} 기준이니 출발 전에 확인해 두시면 좋아요.")
     if pet_rows:
-        tips.append(f"반려동물 동반 정보({pet_rows[0][1]})도 함께 확인해 두시면 편리해요.")
-    if not tips:
-        tips.append("방문 전 공식 안내 연락처나 홈페이지로 당일 운영 여부를 가볍게 확인해 보시는 걸 추천드려요.")
+        tip_sentences.append(f"반려동물 동반 정보({pet_rows[0][1]})도 미리 살펴보시면 더 여유롭게 다녀오실 수 있어요.")
+    if not tip_sentences:
+        tip_sentences.append("방문 전 공식 안내 연락처나 홈페이지로 당일 운영 여부를 가볍게 확인해 보시는 걸 추천드려요.")
 
     return {
         "post_title": f"{region_name} {title}, 천천히 머물기 좋은 {category_name}",
-        "subtitle": f"{region_name}에서 만난 {title}의 소소한 매력과 방문 정보를 정리했어요",
+        "subtitle": f"{region_name}에서 만난 {title}의 소소한 매력과 방문 이야기를 정리했어요",
         "lead_paragraph": lead,
-        "story_paragraphs": story_paragraphs,
-        "highlights": highlights[:3],
-        "visit_tips": tips[:3],
+        "sections": [
+            {
+                "heading": f"차분하게 마주한 {title}의 첫인상",
+                "body": body_1,
+            },
+            {
+                "heading": "천천히 둘러볼수록 느껴지는 매력",
+                "body": body_2,
+            },
+            {
+                "heading": "다녀오기 전 가볍게 챙길 이야기",
+                "body": " ".join(tip_sentences[:3]),
+            },
+        ],
         "closing_note": "일정에 작은 쉼표가 필요한 날, 오늘 소개해 드린 공간에서 기분 좋은 시간 보내시길 바라요.",
         "ai_model": "rule-based-fallback",
     }
+
+
+def _normalize_editorial_sections(
+    editorial: dict[str, Any], overview: str, title: str
+) -> list[dict[str, str]]:
+    """Gemini 또는 폴백 응답에서 통합 포토 에세이 섹션 목록을 정규화한다."""
+    normalized: list[dict[str, str]] = []
+    raw_sections = editorial.get("sections")
+    if isinstance(raw_sections, list):
+        for idx, item in enumerate(raw_sections, start=1):
+            if not isinstance(item, dict):
+                continue
+            heading = str(
+                item.get("heading") or item.get("title") or f"{title} 이야기 {idx}"
+            ).strip()
+            body = str(
+                item.get("body") or item.get("content") or item.get("text") or ""
+            ).strip()
+            if body:
+                normalized.append({"heading": heading, "body": body})
+
+    if normalized:
+        return normalized
+
+    # 구버전 필드나 비어 있는 응답 방어용 폴백
+    paragraphs = _split_story_paragraphs(overview)
+    fallback_headings = [
+        f"차분하게 둘러본 {title}",
+        "함께 기억해 둘 매력 포인트",
+        "방문 전 소소한 참고 사항",
+    ]
+    for idx, para in enumerate(paragraphs[:3]):
+        normalized.append(
+            {
+                "heading": fallback_headings[idx] if idx < len(fallback_headings) else title,
+                "body": para,
+            }
+        )
+    return normalized
 
 
 def _call_gemini_editorial(prompt: str) -> dict[str, Any] | None:
@@ -512,7 +577,7 @@ def _collect_gallery_urls(
                 "name": _clean_text(img.get("imgname")) or "관광지 사진",
             }
         )
-        if len(kor_gallery) >= 4:
+        if len(kor_gallery) >= 6:
             break
 
     photo_cards: list[dict[str, Any]] = []
@@ -526,9 +591,7 @@ def _collect_gallery_urls(
         p_date = _clean_text(item.get("photo_date"))
         if not hero_url:
             hero_url = p_url
-            hero_credit = (
-                f"출처 · 한국관광공사 관광사진갤러리 ({photographer})"
-            )
+            hero_credit = f"출처 · 한국관광공사 관광사진갤러리 ({photographer})"
             continue
         photo_cards.append(
             {
@@ -547,6 +610,81 @@ def _collect_gallery_urls(
             break
 
     return hero_url, hero_credit, kor_gallery, photo_cards, copyright_codes
+
+
+def _build_inline_photos(
+    kor_gallery: list[dict[str, str]],
+    photo_cards: list[dict[str, Any]],
+    spot_title: str,
+    max_photos: int = 6,
+) -> list[dict[str, Any]]:
+    """관광사진 보강 컷과 KorService2 추가 컷을 고르게 섞어 본문 대형 사진 리스트를 만든다."""
+    normalized_photo: list[dict[str, Any]] = []
+    for p_card in photo_cards:
+        meta_parts = [p_card["title"]]
+        if p_card["photo_date"]:
+            meta_parts.append(f"촬영 {p_card['photo_date']}")
+        meta_parts.append(p_card["photographer"])
+        normalized_photo.append(
+            {
+                "source": "PhotoGalleryService1",
+                "url": p_card["url"],
+                "alt": p_card["title"] or spot_title,
+                "caption": f"{' · '.join(meta_parts)} (한국관광공사 관광사진갤러리)",
+                "tags": p_card.get("keywords") or [],
+                "photographer": p_card["photographer"],
+            }
+        )
+
+    normalized_kor: list[dict[str, Any]] = []
+    for g in kor_gallery:
+        g_name = g.get("name") or ""
+        label = spot_title if (not g_name or g_name == "관광지 사진") else g_name
+        normalized_kor.append(
+            {
+                "source": "KorService2",
+                "url": g["url"],
+                "alt": label,
+                "caption": f"{label} (출처 · 한국관광공사)",
+                "tags": [],
+                "photographer": "",
+            }
+        )
+
+    combined: list[dict[str, Any]] = []
+    max_len = max(len(normalized_photo), len(normalized_kor))
+    for i in range(max_len):
+        if i < len(normalized_photo):
+            combined.append(normalized_photo[i])
+        if len(combined) >= max_photos:
+            break
+        if i < len(normalized_kor):
+            combined.append(normalized_kor[i])
+        if len(combined) >= max_photos:
+            break
+
+    return combined[:max_photos]
+
+
+def _render_large_photo_figure(photo: dict[str, Any]) -> str:
+    """원본 비율 무크롭으로 본문 폭에 맞춰 큼직하게 보여주는 대형 사진 HTML을 만든다."""
+    tags = photo.get("tags") or []
+    tags_html = ""
+    if tags:
+        chips = "".join(
+            f'<span style="display:inline-block;margin:0 3px;padding:2px 8px;border-radius:999px;background:#faf8f5;border:1px solid #e6dfd5;font-size:11px;color:#736c63;">#{html.escape(t)}</span>'
+            for t in tags[:3]
+        )
+        tags_html = f'<div style="margin-top:6px;">{chips}</div>'
+
+    return (
+        '<figure style="margin:26px 0 32px;text-align:center;">'
+        f'<img src="{html.escape(photo["url"])}" alt="{html.escape(photo["alt"])}" '
+        'style="display:block;margin:0 auto;max-height:640px;width:auto;max-width:100%;height:auto;border-radius:14px;box-shadow:0 8px 26px rgba(38,38,38,0.06);" />'
+        f'<figcaption style="margin-top:10px;font-size:12px;line-height:1.55;color:#8c8378;">{html.escape(photo["caption"])}</figcaption>'
+        f"{tags_html}"
+        "</figure>"
+    )
 
 
 def _resolve_copyright_notice(
@@ -600,16 +738,16 @@ def _render_extra_info_html(
                 continue
             img_html = (
                 f'<img src="{html.escape(subimg)}" alt="{html.escape(subname or "코스 사진")}" '
-                'style="width:100%;max-height:340px;object-fit:cover;border-radius:10px;margin-top:12px;display:block;" />'
+                'style="display:block;margin:14px auto 0;max-height:520px;width:auto;max-width:100%;height:auto;border-radius:10px;" />'
                 if subimg
                 else ""
             )
             blocks.append(
                 '<div style="padding:18px 20px;background:#faf8f5;border:1px solid #eae4db;'
-                'border-radius:12px;margin-bottom:12px;">'
+                'border-radius:12px;margin-bottom:14px;">'
                 f'<div style="font-size:12px;font-weight:700;letter-spacing:0.04em;color:#3d5a4c;margin-bottom:4px;">COURSE {idx:02d}</div>'
                 f'<div style="font-size:16px;font-weight:700;color:#262626;margin-bottom:8px;">{html.escape(subname)}</div>'
-                f'<div style="font-size:14.5px;line-height:1.8;color:#4a453f;">{suboverview}</div>'
+                f'<div style="font-size:14.5px;line-height:1.85;color:#4a453f;">{suboverview}</div>'
                 f"{img_html}</div>"
             )
     else:
@@ -682,7 +820,7 @@ def _render_map_html(title: str, addr1: str, mapx: Any, mapy: Any) -> str:
 def generate_blog_post(
     bundle: dict[str, Any], category_override: str | None = None
 ) -> dict[str, Any]:
-    """수집된 관광정보와 보강 사진을 바탕으로 20대 여성 어투의 미니멀 에디토리얼 포스트를 생성한다."""
+    """수집된 관광정보와 보강 사진을 바탕으로 포토 에세이형 미니멀 블로그 포스트를 생성한다."""
     content_id = str(bundle.get("content_id", ""))
     ctype = str(bundle.get("content_type_id", "12"))
     common = bundle.get("common") or {}
@@ -703,6 +841,9 @@ def generate_blog_post(
     pet_rows = _collect_pet_rows(pet_info)
     hero_url, hero_credit, kor_gallery, photo_cards, copyright_codes = (
         _collect_gallery_urls(common, images, photo_gallery)
+    )
+    inline_photos = _build_inline_photos(
+        kor_gallery, photo_cards, spot_title=title, max_photos=6
     )
 
     photo_kw_hints: list[str] = []
@@ -738,23 +879,7 @@ def generate_blog_post(
     post_title = str(editorial.get("post_title") or title).strip()
     subtitle = str(editorial.get("subtitle") or "").strip()
     lead_paragraph = str(editorial.get("lead_paragraph") or "").strip()
-    raw_stories = editorial.get("story_paragraphs") or []
-    story_paragraphs = [
-        str(p).strip() for p in raw_stories if str(p).strip()
-    ]
-    if not story_paragraphs and overview:
-        story_paragraphs = _split_story_paragraphs(overview)
-
-    highlights = [
-        str(x).strip()
-        for x in (editorial.get("highlights") or [])
-        if str(x).strip()
-    ]
-    visit_tips = [
-        str(x).strip()
-        for x in (editorial.get("visit_tips") or [])
-        if str(x).strip()
-    ]
+    sections = _normalize_editorial_sections(editorial, overview, title)
     closing_note = str(editorial.get("closing_note") or "").strip()
 
     # Blogger 공식 3대 카테고리 + '카테고리-지역' 서브 라벨 부여
@@ -789,72 +914,53 @@ def generate_blog_post(
         "</header>"
     )
 
-    # 2. 와이드 대표 이미지
+    # 2. 대표 대형 이미지 (원본 비율 무크롭)
     hero_html = ""
     if hero_url:
         hero_caption = f"{title} ({hero_credit})" if hero_credit else title
         hero_html = (
             '<figure style="margin:0 0 28px;text-align:center;">'
             f'<img src="{html.escape(hero_url)}" alt="{html.escape(title)} 대표 사진" '
-            'style="width:100%;max-width:760px;height:auto;border-radius:14px;display:block;margin:0 auto;box-shadow:0 8px 28px rgba(38,38,38,0.06);" />'
+            'style="display:block;margin:0 auto;max-height:640px;width:auto;max-width:100%;height:auto;border-radius:14px;box-shadow:0 8px 28px rgba(38,38,38,0.06);" />'
             f'<figcaption style="margin-top:10px;font-size:12px;color:#8c8378;">{html.escape(hero_caption)}</figcaption>'
             "</figure>"
         )
 
-    # 3. 도입 에세이 카드 + 본문 스토리 + 매력 포인트 & 방문 팁 2단 카드
-    story_heading = {
-        "그날의 미식": "공간과 맛 이야기",
-        "그날의 여정": "길 위에서 만나는 풍경",
-    }.get(blog_category, "천천히 둘러보는 이야기")
-
-    story_body_html = "".join(
-        f'<p style="margin:0 0 16px;font-size:15.5px;line-height:1.95;color:#333333;">{html.escape(p)}</p>'
-        for p in story_paragraphs
-    )
-    story_section = (
-        '<div style="margin:26px 0 8px;">'
-        f'<h2 style="font-size:18px;font-weight:700;color:#262626;margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid #eae4db;letter-spacing:-0.01em;">{story_heading}</h2>'
-        f"{story_body_html}</div>"
-        if story_body_html
-        else ""
-    )
-
-    highlights_items = "".join(
-        '<li style="list-style:none;margin-bottom:10px;line-height:1.75;font-size:14px;color:#333333;">'
-        f'<span style="color:#3d5a4c;font-weight:700;margin-right:8px;">{idx:02d}</span>{html.escape(item)}'
-        "</li>"
-        for idx, item in enumerate(highlights, start=1)
-    )
-    tips_items = "".join(
-        '<li style="list-style:none;margin-bottom:10px;line-height:1.75;font-size:14px;color:#333333;">'
-        f'<span style="color:#3d5a4c;font-weight:700;margin-right:8px;">{idx:02d}</span>{html.escape(item)}'
-        "</li>"
-        for idx, item in enumerate(visit_tips, start=1)
-    )
-
-    two_col_cards = (
-        '<div style="display:flex;flex-wrap:wrap;gap:14px;margin:24px 0 6px;">'
-        '<div style="flex:1 1 280px;background:#ffffff;border:1px solid #eae4db;border-radius:14px;padding:20px;">'
-        '<h3 style="margin:0 0 14px;font-size:15px;font-weight:700;color:#262626;letter-spacing:-0.01em;">이곳이 좋았던 이유</h3>'
-        f'<ul style="margin:0;padding:0;">{highlights_items}</ul>'
-        "</div>"
-        '<div style="flex:1 1 280px;background:#faf8f5;border:1px solid #eae4db;border-radius:14px;padding:20px;">'
-        '<h3 style="margin:0 0 14px;font-size:15px;font-weight:700;color:#3d5a4c;letter-spacing:-0.01em;">다녀오기 전 작은 팁</h3>'
-        f'<ul style="margin:0;padding:0;">{tips_items}</ul>'
-        "</div>"
-        "</div>"
-        if (highlights_items or tips_items)
-        else ""
-    )
-
-    intro_section_html = (
-        '<section style="margin:26px 0;">'
-        '<div style="background:#faf8f5;border-left:3px solid #3d5a4c;padding:18px 20px;border-radius:0 12px 12px 0;margin:0 0 24px;">'
+    # 3. 도입 에세이 + 매력·팁 통합 섹션 및 본문 중간 대형 사진 인터리빙
+    lead_html = (
+        '<div style="background:#faf8f5;border-left:3px solid #3d5a4c;padding:18px 20px;border-radius:0 12px 12px 0;margin:0 0 28px;">'
         f'<p style="margin:0;font-size:15.5px;line-height:1.9;color:#262626;">{html.escape(lead_paragraph)}</p>'
         "</div>"
-        f"{story_section}{two_col_cards}"
-        "</section>"
+        if lead_paragraph
+        else ""
     )
+
+    essay_blocks: list[str] = []
+    for idx, sec in enumerate(sections):
+        body_paragraphs = [
+            p.strip() for p in sec["body"].splitlines() if p.strip()
+        ] or [sec["body"]]
+        body_html = "".join(
+            f'<p style="margin:0 0 14px;font-size:15.5px;line-height:1.95;color:#333333;">{html.escape(p)}</p>'
+            for p in body_paragraphs
+        )
+        section_html = (
+            '<section style="margin:32px 0 8px;">'
+            f'<h2 style="font-size:19px;font-weight:700;color:#262626;margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid #eae4db;letter-spacing:-0.01em;">{html.escape(sec["heading"])}</h2>'
+            f"{body_html}"
+            "</section>"
+        )
+        essay_blocks.append(section_html)
+
+        if idx < len(inline_photos):
+            essay_blocks.append(_render_large_photo_figure(inline_photos[idx]))
+
+    # 섹션 수보다 남은 추가 사진은 하단에 1장씩 시원한 대형 스트림으로 이어 배치
+    remaining_photos = inline_photos[len(sections) :]
+    for rem_photo in remaining_photos:
+        essay_blocks.append(_render_large_photo_figure(rem_photo))
+
+    essay_stream_html = "".join(essay_blocks)
 
     # 4. 한눈에 보는 방문 정보 표
     table_rows_html = ""
@@ -896,55 +1002,12 @@ def generate_blog_post(
             "</section>"
         )
 
-    # 6. 기본 포토 갤러리 + 한국관광공사 관광사진갤러리 보강 섹션
-    kor_gallery_html = ""
-    if kor_gallery:
-        kor_cards = "".join(
-            '<div style="flex:1 1 240px;max-width:calc(50% - 6px);min-width:210px;">'
-            f'<img src="{html.escape(g["url"])}" alt="{html.escape(g["name"])}" '
-            'style="width:100%;height:auto;border-radius:12px;display:block;border:1px solid #eae4db;" />'
-            "</div>"
-            for g in kor_gallery
-        )
-        kor_gallery_html = (
-            '<section style="margin:34px 0;">'
-            '<h2 style="font-size:18px;font-weight:700;color:#262626;margin:0 0 16px;padding-bottom:10px;border-bottom:1px solid #eae4db;letter-spacing:-0.01em;">조금 더 담아본 사진들</h2>'
-            f'<div style="display:flex;flex-wrap:wrap;gap:12px;">{kor_cards}</div>'
-            "</section>"
-        )
-
-    photo_cards_html = ""
-    photo_photographers: list[str] = []
-    if photo_cards:
-        rendered_photo_cards = ""
-        for p_card in photo_cards:
-            photo_photographers.append(p_card["photographer"])
-            meta_parts = [p_card["title"]]
-            if p_card["photo_date"]:
-                meta_parts.append(f"촬영 {p_card['photo_date']}")
-            meta_parts.append(p_card["photographer"])
-            tag_chips = "".join(
-                f'<span style="display:inline-block;margin:4px 4px 0 0;padding:2px 8px;border-radius:999px;background:#ffffff;border:1px solid #e6dfd5;font-size:11px;color:#736c63;">#{html.escape(t)}</span>'
-                for t in p_card["keywords"]
-            )
-            rendered_photo_cards += (
-                '<div style="flex:1 1 260px;max-width:calc(50% - 7px);min-width:220px;background:#faf8f5;border:1px solid #eae4db;border-radius:12px;overflow:hidden;">'
-                f'<img src="{html.escape(p_card["url"])}" alt="{html.escape(p_card["title"])}" '
-                'style="width:100%;height:auto;display:block;" />'
-                '<div style="padding:11px 13px;">'
-                f'<div style="font-size:12.5px;font-weight:600;color:#262626;line-height:1.5;">{html.escape(" · ".join(meta_parts))}</div>'
-                f'{f"<div>{tag_chips}</div>" if tag_chips else ""}'
-                "</div></div>"
-            )
-        photo_cards_html = (
-            '<section style="margin:34px 0;">'
-            '<h2 style="font-size:18px;font-weight:700;color:#262626;margin:0 0 6px;letter-spacing:-0.01em;">함께 담아본 풍경</h2>'
-            '<p style="margin:0 0 16px;font-size:13px;color:#736c63;padding-bottom:10px;border-bottom:1px solid #eae4db;">한국관광공사 관광사진갤러리에서 전하는 이곳의 또 다른 시선이에요.</p>'
-            f'<div style="display:flex;flex-wrap:wrap;gap:14px;">{rendered_photo_cards}</div>'
-            "</section>"
-        )
-
-    # 대표 이미지가 관광사진갤러리에서 승격된 경우에도 푸터 촬영자 목록에 포함
+    # 푸터용 관광사진갤러리 촬영자 수집
+    photo_photographers: list[str] = [
+        p["photographer"]
+        for p in inline_photos
+        if p.get("source") == "PhotoGalleryService1" and p.get("photographer")
+    ]
     if hero_credit.startswith("출처 · 한국관광공사 관광사진갤러리"):
         for p_item in photo_gallery:
             cred = _clean_text(p_item.get("photographer"))
@@ -952,7 +1015,7 @@ def generate_blog_post(
                 photo_photographers.insert(0, cred)
                 break
 
-    # 7. 무료 지도 및 길찾기
+    # 6. 무료 지도 및 길찾기
     map_html = _render_map_html(
         title=title,
         addr1=addr1,
@@ -960,7 +1023,7 @@ def generate_blog_post(
         mapy=common.get("mapy"),
     )
 
-    # 8. 마무리 문장 + 공공누리/촬영자 출처 푸터
+    # 7. 마무리 문장 + 공공누리/촬영자 출처 푸터
     closing_html = (
         '<div style="margin:30px 0 22px;padding:18px 20px;background:#faf8f5;border-radius:12px;border:1px solid #eae4db;text-align:center;">'
         f'<p style="margin:0;font-size:14.5px;line-height:1.8;color:#4a453f;">{html.escape(closing_note)}</p>'
@@ -978,7 +1041,7 @@ def generate_blog_post(
 
     full_html = (
         '<div style="max-width:760px;margin:0 auto;padding:8px 4px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,\'Apple SD Gothic Neo\',\'Pretendard\',\'Malgun Gothic\',sans-serif;color:#262626;">'
-        f"{header_html}{hero_html}{intro_section_html}{kor_gallery_html}{photo_cards_html}{info_table_html}{extra_info_html}{pet_html}{map_html}{closing_html}{footer_html}"
+        f"{header_html}{hero_html}{lead_html}{essay_stream_html}{info_table_html}{extra_info_html}{pet_html}{map_html}{closing_html}{footer_html}"
         "</div>"
     )
 
