@@ -1219,12 +1219,15 @@ def generate_blog_post(
         else ""
     )
     subtitle_html = (
-        f'<p style="margin:0 0 10px;font-size:15px;line-height:1.6;color:#736c63;">{html.escape(subtitle)}</p>'
+        '<p style="margin:12px 0 14px 6px;padding:3px 0 3px 14px;'
+        'border-left:2.5px solid #3d5a4c;font-size:17.5px;font-weight:500;'
+        'line-height:1.65;letter-spacing:-0.015em;color:#4a453f;">'
+        f"{html.escape(subtitle)}</p>"
         if subtitle
         else ""
     )
     addr_html = (
-        f'<p style="margin:0;font-size:13px;color:#8c8378;">{html.escape(addr1)}</p>'
+        f'<p style="margin:8px 0 0 6px;font-size:13px;color:#8c8378;">{html.escape(addr1)}</p>'
         if addr1
         else ""
     )
@@ -1233,7 +1236,7 @@ def generate_blog_post(
         '<div style="margin-bottom:10px;font-size:12px;font-weight:600;letter-spacing:0.04em;color:#3d5a4c;">'
         f'{html.escape(blog_category)} · {html.escape(region_name)} · {html.escape(category_name)}{pet_meta_pill}'
         "</div>"
-        f'<h1 style="font-size:26px;line-height:1.38;font-weight:700;color:#262626;letter-spacing:-0.02em;margin:0 0 10px;">{html.escape(title)}</h1>'
+        f'<h1 style="font-size:26px;line-height:1.38;font-weight:700;color:#262626;letter-spacing:-0.02em;margin:0 0 12px;">{html.escape(title)}</h1>'
         f"{subtitle_html}{addr_html}"
         "</header>"
     )
