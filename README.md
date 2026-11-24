@@ -1,12 +1,12 @@
 # OndoTrip (그날의 온도) — 공공데이터 기반 구글 블로그 자동 포스팅
 
-한국관광공사 국문 관광정보 서비스(`KorService2`, 매뉴얼 Ver 4.4) Open API에서 국내 여행지·음식점·여행코스 정보를 수집(일회성 행사/축제 및 숙박 제외)하고, Gemini AI 및 무료 지도(OpenStreetMap + 네이버/카카오/구글 지도 링크)를 결합해 Google Blogger(`https://ondotrip.blogspot.com/`)에 자동으로 글을 작성하는 Python 도구입니다.
+한국관광공사 국문 관광정보 서비스(`KorService2`, 매뉴얼 Ver 4.4) 및 관광사진 정보 서비스(`PhotoGalleryService1`, 매뉴얼 Ver 4.2) Open API에서 국내 여행지·음식점·여행코스 정보와 고화질 사진을 수집(일회성 행사/축제 및 숙박 제외)하고, Gemini AI(20대 여성 에디터 어투 · Warm Editorial Minimal 레이아웃) 및 무료 지도(OpenStreetMap + 네이버/카카오/구글 지도 링크)를 결합해 Google Blogger(`https://ondotrip.blogspot.com/`)에 자동으로 글을 작성하는 Python 도구입니다.
 
 ## 프로젝트 구조
 
-- `config.py`: `.env` 환경변수 로드, 관광타입(`contentTypeId`) 및 법정동 시도코드(`lDongRegnCd`) 매핑
-- `tour_api.py`: `KorService2` API 클라이언트 (`areaBasedList2`, `searchKeyword2`, `detailCommon2`, `detailIntro2`, `detailInfo2`, `detailImage2`, `detailPetTour2`)
-- `writer.py`: Gemini 원고 생성(폴백 포함) 및 반응형 HTML 생성, 무료 지도 임베드, 공공누리(Type1/Type3) 출처 표기
+- `config.py`: `.env` 환경변수 로드, 관광타입(`contentTypeId`)·관광사진 설정 및 법정동 시도코드(`lDongRegnCd`) 매핑
+- `tour_api.py`: `KorService2` API 및 `PhotoGalleryService1` 관광사진 자동 보강 클라이언트 (`gallerySearchList1` 포함)
+- `writer.py`: 20대 여성 에디터 어투 Gemini 원고 생성(폴백 포함) 및 미니멀 에디토리얼 HTML 생성, 무료 지도 임베드, 공공누리·촬영자 출처 표기
 - `blogger_client.py`: Google Blogger API v3 OAuth 2.0 인증(`token.json`) 및 글 임시저장/발행
 - `history_store.py`: `posted_history.json` 기반 중복 포스팅 방지
 - `main.py`: CLI 실행 진입점

@@ -209,8 +209,9 @@ def _build_gemini_prompt(
     overview: str,
     info_rows: list[tuple[str, str]],
     pet_rows: list[tuple[str, str]],
+    photo_keywords: list[str] | None = None,
 ) -> str:
-    """사실 기반 여행 블로그 원고 생성을 위한 Gemini 프롬프트를 작성한다."""
+    """20대 여성 에디터 어투의 사실 기반 여행 블로그 원고 생성용 Gemini 프롬프트를 만든다."""
     facts_lines = [f"- {label}: {val}" for label, val in info_rows[:12]]
     if pet_rows:
         facts_lines.append(
@@ -219,31 +220,58 @@ def _build_gemini_prompt(
     facts_text = "\n".join(facts_lines) if facts_lines else "- 추가 운영 정보 없음"
 
     category_focus = {
-        "그날의 장소": "공간이 주는 분위기와 볼거리, 산책·관람 포인트 중심으로 작성하세요.",
-        "그날의 미식": "대표 메뉴, 공간 분위기, 식사·카페 방문 시 참고할 점 중심으로 작성하세요.",
-        "그날의 쉼터": "객실이나 캠핑·야영 공간의 분위기, 부대시설, 체크인·체크아웃 등 숙박 이용 팁 중심으로 작성하세요.",
-        "그날의 여정": "코스 동선, 전체 소요시간, 일정별 이동 포인트 중심으로 작성하세요.",
-    }.get(blog_category, "여행지 매력과 방문 포인트 중심으로 작성하세요.")
+        "그날의 장소": "공간의 분위기와 볼거리, 산책하거나 천천히 머물기 좋은 포인트 중심으로 써 주세요.",
+        "그날의 미식": "대표 메뉴, 가게 분위기, 식사나 커피 한 잔 즐기기 좋은 포인트를 담아 주세요.",
+        "그날의 여정": "코스 동선, 전체 소요시간, 구간별 풍경과 이동 포인트를 흐름 있게 정리해 주세요.",
+    }.get(blog_category, "여행지 매력과 방문 포인트 중심으로 작성해 주세요.")
+
+    kw_hint = ""
+    if photo_keywords:
+        kw_hint = f"[사진 분위기 참고 키워드] {', '.join(photo_keywords[:8])}\n"
 
     return (
-        "당신은 국내 여행 블로그 '그날의 온도(OndoTrip)'의 전문 여행 에디터입니다.\n"
-        f"이 글은 블로그의 [{blog_category}] 카테고리에 올라갑니다. {category_focus}\n"
-        "아래 한국관광공사 공공데이터(사실 정보)만을 바탕으로 블로그 독자에게 도움이 되는 소개글을 작성하세요.\n"
-        "데이터에 없는 요금, 시간, 시설, 역사를 지어내지 마세요.\n\n"
+        "당신은 감성적이고 담백한 국내 여행 블로그 '그날의 온도(OndoTrip)'를 운영하는 20대 여성 에디터입니다.\n"
+        f"이번 글은 [{blog_category}] 카테고리에 올라갑니다. {category_focus}\n\n"
+        "[어투 및 작성 원칙]\n"
+        "1. 친한 친구나 구독자에게 차분하고 다정하게 추천하듯 자연스러운 해요체(~해요, ~더라고요, ~좋아요, ~추천드려요)로 쓰세요.\n"
+        "2. 과한 이모지, 오글거리는 유행어(대박, 찐맛집, 레전드, 감성 폭발 등), 어색한 AI 번역투, 제목 앞 딱딱한 대괄호([카테고리]) 남발은 피하세요.\n"
+        "3. 오직 아래 한국관광공사 공공데이터(사실 정보)만 바탕으로 작성하세요. 데이터에 없는 요금, 시간, 메뉴, 개인적인 방문 경험담('어제 직접 다녀왔는데' 등)을 절대 지어내지 마세요.\n\n"
         f"[장소/코스명] {title}\n"
         f"[블로그 카테고리] {blog_category}\n"
         f"[지역/유형] {region_name} / {category_name}\n"
         f"[주소] {addr}\n"
+        f"{kw_hint}"
         f"[개요] {overview[:1500]}\n"
         f"[상세정보]\n{facts_text}\n\n"
         "반드시 아래 JSON 형식으로만 응답하세요:\n"
         "{\n"
-        '  "post_title": "블로그 검색에 잘 노출되는 매력적인 한국어 제목 (35자 내외)",\n'
-        '  "lead_paragraph": "여행자의 흥미를 끄는 자연스러운 도입 문단 (2~3문장)",\n'
-        '  "highlights": ["이곳의 핵심 매력 포인트 1", "매력 포인트 2", "매력 포인트 3"],\n'
-        '  "visit_tips": ["실제 운영정보 기반 방문 팁 1", "방문 팁 2", "방문 팁 3"]\n'
+        '  "post_title": "검색에 잘 노출되면서도 자연스러운 20대 여성 블로그 스타일 제목 (35자 내외)",\n'
+        '  "subtitle": "제목 아래에 놓일 담백한 한 줄 요약 (20~40자)",\n'
+        '  "lead_paragraph": "부드럽게 이야기를 여는 도입 문단 (2~3문장, 자연스러운 해요체)",\n'
+        '  "story_paragraphs": [\n'
+        '    "공공데이터 개요를 자연스러운 해요체로 풀어쓴 본문 첫 번째 문단 (2~4문장)",\n'
+        '    "분위기와 볼거리, 함께 즐길 수 있는 포인트를 이어가는 두 번째 문단 (2~4문장)"\n'
+        "  ],\n"
+        '  "highlights": ["이곳이 좋았던 매력 포인트 1 (해요체)", "매력 포인트 2 (해요체)", "매력 포인트 3 (해요체)"],\n'
+        '  "visit_tips": ["실제 운영정보 기반 방문 팁 1 (해요체)", "방문 팁 2 (해요체)", "방문 팁 3 (해요체)"],\n'
+        '  "closing_note": "잔잔한 여운을 남기며 일정을 권하는 마무리 1~2문장 (해요체)"\n'
         "}"
     )
+
+
+def _split_story_paragraphs(overview: str) -> list[str]:
+    """개요 텍스트를 자연스러운 2개 내외 문단으로 나눈다."""
+    sentences = [
+        s.strip()
+        for s in re.split(r"(?<=[.!?다요])\s+", overview.replace("\n", " "))
+        if len(s.strip()) > 10
+    ]
+    if not sentences:
+        return [overview.strip()] if overview.strip() else []
+    if len(sentences) <= 3:
+        return [" ".join(sentences)]
+    mid = (len(sentences) + 1) // 2
+    return [" ".join(sentences[:mid]), " ".join(sentences[mid:])]
 
 
 def _generate_fallback_copy(
@@ -256,31 +284,36 @@ def _generate_fallback_copy(
     info_rows: list[tuple[str, str]],
     pet_rows: list[tuple[str, str]],
 ) -> dict[str, Any]:
-    """Gemini 호출이 실패했을 때 수집된 공공데이터로 원고를 구성한다."""
+    """Gemini 호출이 실패했을 때 공공데이터로 자연스러운 해요체 원고를 구성한다."""
+    story_paragraphs = _split_story_paragraphs(overview)
     sentences = [
         s.strip()
         for s in re.split(r"(?<=[.!?다요])\s+", overview.replace("\n", " "))
         if len(s.strip()) > 10
     ]
     lead = (
-        " ".join(sentences[:2])
-        if sentences
-        else f"{region_name}에서 만나볼 수 있는 {category_name} '{title}'의 정보를 정리했습니다."
+        f"{region_name} 나들이를 계획 중이라면 '{title}'에 한 번 들러보시는 건 어떨까요? "
+        + (" ".join(sentences[:2]) if sentences else f"{category_name} 특유의 분위기를 여유롭게 느끼기 좋아요.")
     )
 
-    highlights = sentences[2:5] if len(sentences) > 2 else []
-    if not highlights:
-        highlights = [
-            f"{region_name} 여행 중 함께 들르기 좋은 {category_name}입니다.",
-            f"위치: {addr}" if addr else f"{title}의 매력과 분위기를 여유롭게 즐길 수 있습니다.",
-        ]
+    highlights = [
+        f"{region_name}에서 가볍게 들러 분위기를 즐기기 좋은 {category_name}이에요.",
+        (
+            f"{addr}에 자리하고 있어 주변 동선과 함께 묶어 다녀오기 좋아요."
+            if addr
+            else f"{title}만의 차분한 매력과 볼거리를 천천히 둘러보기 좋아요."
+        ),
+        (
+            sentences[2]
+            if len(sentences) > 2
+            else "사계절 언제 찾아도 계절마다 다른 풍경을 마주할 수 있어요."
+        ),
+    ]
 
     info_dict = dict(info_rows)
     tips: list[str] = []
     for key in (
         "대표 메뉴",
-        "체크인(입실)",
-        "체크아웃(퇴실)",
         "영업시간",
         "이용시간",
         "코스 총 소요시간",
@@ -292,17 +325,20 @@ def _generate_fallback_copy(
         "입장료",
     ):
         if key in info_dict:
-            tips.append(f"{key}: {info_dict[key].splitlines()[0]}")
+            tips.append(f"{key}은(는) {info_dict[key].splitlines()[0]} 기준이라 방문 전 참고하시면 좋아요.")
     if pet_rows:
-        tips.append(f"반려동물 동반 정보: {pet_rows[0][1]}")
+        tips.append(f"반려동물 동반 정보({pet_rows[0][1]})도 함께 확인해 두시면 편리해요.")
     if not tips:
-        tips.append("방문 전 공식 안내 연락처 또는 홈페이지를 통해 당일 운영 여부를 확인해 주세요.")
+        tips.append("방문 전 공식 안내 연락처나 홈페이지로 당일 운영 여부를 가볍게 확인해 보시는 걸 추천드려요.")
 
     return {
-        "post_title": f"[{region_name}] {title} — {blog_category} 안내",
+        "post_title": f"{region_name} {title}, 천천히 머물기 좋은 {category_name}",
+        "subtitle": f"{region_name}에서 만난 {title}의 소소한 매력과 방문 정보를 정리했어요",
         "lead_paragraph": lead,
+        "story_paragraphs": story_paragraphs,
         "highlights": highlights[:3],
         "visit_tips": tips[:3],
+        "closing_note": "일정에 작은 쉼표가 필요한 날, 오늘 소개해 드린 공간에서 기분 좋은 시간 보내시길 바라요.",
         "ai_model": "rule-based-fallback",
     }
 
@@ -328,7 +364,7 @@ def _call_gemini_editorial(prompt: str) -> dict[str, Any] | None:
 
     payload = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.7},
+        "generationConfig": {"temperature": 0.75},
     }
 
     with config.create_http_session() as session:
@@ -434,15 +470,24 @@ def _collect_pet_rows(pet_info: dict[str, Any]) -> list[tuple[str, str]]:
 
 
 def _collect_gallery_urls(
-    common: dict[str, Any], images: list[dict[str, Any]]
-) -> tuple[str, list[dict[str, str]], list[str]]:
-    """대표 이미지 URL, 추가 갤러리 이미지 목록, 저작권 코드 목록을 추출한다."""
+    common: dict[str, Any],
+    images: list[dict[str, Any]],
+    photo_gallery: list[dict[str, Any]] | None = None,
+) -> tuple[
+    str,
+    str,
+    list[dict[str, str]],
+    list[dict[str, Any]],
+    list[str],
+]:
+    """대표 이미지, KorService2 갤러리, 관광사진(PhotoGalleryService1) 보강 카드, 저작권 코드를 수집한다."""
     hero_url = _to_https(str(common.get("firstimage") or ""))
+    hero_credit = "출처 · 한국관광공사 국문 관광정보 서비스" if hero_url else ""
     copyright_codes: list[str] = []
     if common.get("cpyrhtDivCd"):
         copyright_codes.append(str(common["cpyrhtDivCd"]).strip())
 
-    gallery: list[dict[str, str]] = []
+    kor_gallery: list[dict[str, str]] = []
     seen_urls: set[str] = set()
     if hero_url:
         seen_urls.add(hero_url)
@@ -455,46 +500,93 @@ def _collect_gallery_urls(
             copyright_codes.append(str(img["cpyrhtDivCd"]).strip())
         if not hero_url:
             hero_url = orig_url
+            hero_credit = "출처 · 한국관광공사 국문 관광정보 서비스"
             seen_urls.add(orig_url)
             continue
         if orig_url in seen_urls:
             continue
         seen_urls.add(orig_url)
-        gallery.append(
+        kor_gallery.append(
             {
                 "url": orig_url,
                 "name": _clean_text(img.get("imgname")) or "관광지 사진",
             }
         )
-        if len(gallery) >= 6:
+        if len(kor_gallery) >= 4:
             break
 
-    return hero_url, gallery, copyright_codes
+    photo_cards: list[dict[str, Any]] = []
+    for item in photo_gallery or []:
+        p_url = _to_https(str(item.get("url") or ""))
+        if not p_url or p_url in seen_urls:
+            continue
+        seen_urls.add(p_url)
+        photographer = _clean_text(item.get("photographer")) or "한국관광공사"
+        p_title = _clean_text(item.get("title")) or "국내 여행 풍경"
+        p_date = _clean_text(item.get("photo_date"))
+        if not hero_url:
+            hero_url = p_url
+            hero_credit = (
+                f"출처 · 한국관광공사 관광사진갤러리 ({photographer})"
+            )
+            continue
+        photo_cards.append(
+            {
+                "url": p_url,
+                "title": p_title,
+                "photo_date": p_date,
+                "location": _clean_text(item.get("location")),
+                "photographer": photographer,
+                "keywords": [
+                    _clean_text(k) for k in (item.get("keywords") or []) if _clean_text(k)
+                ][:3],
+                "matched_spot": _clean_text(item.get("matched_spot")),
+            }
+        )
+        if len(photo_cards) >= config.PHOTO_GALLERY_MAX_IMAGES:
+            break
+
+    return hero_url, hero_credit, kor_gallery, photo_cards, copyright_codes
 
 
-def _resolve_copyright_notice(copyright_codes: list[str]) -> str:
-    """공공누리 유형 코드(Type1/Type3)에 맞는 출처 및 저작권 안내 문구를 만든다."""
+def _resolve_copyright_notice(
+    copyright_codes: list[str],
+    photo_photographers: list[str] | None = None,
+) -> str:
+    """공공누리 유형 및 관광사진갤러리 촬영자 출처 문구를 생성한다."""
     normalized = {c.upper() for c in copyright_codes if c}
     if "TYPE3" in normalized:
         kogl_text = "공공누리 제3유형(출처표시 + 변경금지)"
-        rule_note = "본 포스트에 포함된 한국관광공사 제공 이미지는 원본 그대로 사용되었으며 무단 변경·가공이 금지됩니다."
+        rule_note = "본 포스트에 포함된 한국관광공사 제공 이미지는 원본 그대로 사용되었으며 무단 변경·가공을 하지 않았어요."
     elif "TYPE1" in normalized:
         kogl_text = "공공누리 제1유형(출처표시)"
-        rule_note = "한국관광공사 공공데이터(TourAPI) 기준 출처를 표기하여 제공합니다."
+        rule_note = "한국관광공사 공공데이터(TourAPI) 기준 출처를 표기하여 제공해요."
     else:
-        kogl_text = "공공누리(한국관광공사 국문 관광정보 서비스 기준)"
-        rule_note = "제공된 공공데이터 및 이미지의 저작권은 한국관광공사에 있습니다."
+        kogl_text = "공공누리(한국관광공사 관광정보 서비스 기준)"
+        rule_note = "제공된 공공데이터 및 이미지의 저작권은 한국관광공사에 있어요."
+
+    extra_photo_source = ""
+    unique_photographers = [
+        p for p in dict.fromkeys(photo_photographers or []) if p
+    ]
+    if unique_photographers:
+        joined_credits = ", ".join(unique_photographers)
+        extra_photo_source = (
+            f" · <strong>추가 사진</strong>: 한국관광공사 관광사진갤러리"
+            f"(PhotoGalleryService1 · 촬영 {html.escape(joined_credits)})"
+        )
+
     return (
         f"<strong>데이터 및 사진 출처</strong>: 한국관광공사 국문 관광정보 서비스(TourAPI 4.4) "
-        f"| <strong>저작권 유형</strong>: {html.escape(kogl_text)}<br />"
-        f"<span style=\"color:#6b7280;font-size:12px;\">{html.escape(rule_note)}</span>"
+        f"| <strong>저작권</strong>: {html.escape(kogl_text)}{extra_photo_source}<br />"
+        f'<span style="color:#8c8378;font-size:12px;">{html.escape(rule_note)}</span>'
     )
 
 
 def _render_extra_info_html(
     content_type_id: str, info_list: list[dict[str, Any]]
 ) -> str:
-    """반복정보(detailInfo2)를 타입(일반/여행코스/숙박)에 맞게 HTML 카드로 렌더링한다."""
+    """반복정보(detailInfo2)를 미니멀 에디토리얼 톤 카드로 렌더링한다."""
     if not info_list:
         return ""
 
@@ -508,46 +600,17 @@ def _render_extra_info_html(
                 continue
             img_html = (
                 f'<img src="{html.escape(subimg)}" alt="{html.escape(subname or "코스 사진")}" '
-                'style="width:100%;max-height:320px;object-fit:cover;border-radius:8px;margin-top:8px;" />'
+                'style="width:100%;max-height:340px;object-fit:cover;border-radius:10px;margin-top:12px;display:block;" />'
                 if subimg
                 else ""
             )
             blocks.append(
-                '<div style="padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;'
-                'border-radius:10px;margin-bottom:10px;">'
-                f'<div style="font-weight:700;color:#0f172a;margin-bottom:6px;">코스 {idx}. {html.escape(subname)}</div>'
-                f'<div style="font-size:14px;line-height:1.7;color:#334155;">{suboverview}</div>'
+                '<div style="padding:18px 20px;background:#faf8f5;border:1px solid #eae4db;'
+                'border-radius:12px;margin-bottom:12px;">'
+                f'<div style="font-size:12px;font-weight:700;letter-spacing:0.04em;color:#3d5a4c;margin-bottom:4px;">COURSE {idx:02d}</div>'
+                f'<div style="font-size:16px;font-weight:700;color:#262626;margin-bottom:8px;">{html.escape(subname)}</div>'
+                f'<div style="font-size:14.5px;line-height:1.8;color:#4a453f;">{suboverview}</div>'
                 f"{img_html}</div>"
-            )
-    elif content_type_id == "32":
-        for item in info_list:
-            room_title = _clean_text(item.get("roomtitle"))
-            room_intro = _format_html_text(item.get("roomintro"))
-            base_cnt = _clean_text(item.get("roombasecount"))
-            max_cnt = _clean_text(item.get("roommaxcount"))
-            fee_off = _clean_text(item.get("roomoffseasonminfee1"))
-            fee_peak = _clean_text(item.get("roompeakseasonminfee1"))
-            if not room_title:
-                continue
-            meta_parts = []
-            if base_cnt or max_cnt:
-                meta_parts.append(f"인원: 기준 {base_cnt or '-'}명 / 최대 {max_cnt or '-'}명")
-            if fee_off:
-                meta_parts.append(f"비수기 최소 {fee_off}원")
-            if fee_peak:
-                meta_parts.append(f"성수기 최소 {fee_peak}원")
-            meta_html = (
-                f'<div style="font-size:13px;color:#0369a1;margin:4px 0 6px;">{html.escape(" · ".join(meta_parts))}</div>'
-                if meta_parts
-                else ""
-            )
-            blocks.append(
-                '<div style="padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;'
-                'border-radius:10px;margin-bottom:10px;">'
-                f'<div style="font-weight:700;color:#0f172a;">{html.escape(room_title)}</div>'
-                f"{meta_html}"
-                f'<div style="font-size:14px;line-height:1.65;color:#334155;">{room_intro}</div>'
-                "</div>"
             )
     else:
         for item in info_list:
@@ -556,26 +619,26 @@ def _render_extra_info_html(
             if not (infoname or infotext):
                 continue
             blocks.append(
-                '<div style="padding:12px 16px;background:#f8fafc;border-left:4px solid #0ea5e9;'
-                'border-radius:6px;margin-bottom:10px;">'
-                f'<div style="font-weight:700;color:#0f172a;margin-bottom:4px;">{html.escape(infoname)}</div>'
-                f'<div style="font-size:14px;line-height:1.7;color:#334155;">{infotext}</div>'
+                '<div style="padding:14px 18px;background:#faf8f5;border-left:3px solid #3d5a4c;'
+                'border-radius:0 10px 10px 0;margin-bottom:10px;">'
+                f'<div style="font-weight:700;font-size:14.5px;color:#262626;margin-bottom:4px;">{html.escape(infoname)}</div>'
+                f'<div style="font-size:14px;line-height:1.75;color:#4a453f;">{infotext}</div>'
                 "</div>"
             )
 
     if not blocks:
         return ""
-    heading = "추천 여행 코스 안내" if content_type_id == "25" else "세부 이용 및 시설 안내"
+    heading = "코스 따라 둘러보기" if content_type_id == "25" else "조금 더 알아두면 좋은 정보"
     return (
-        '<section style="margin:28px 0;">'
-        f'<h2 style="font-size:19px;font-weight:700;color:#0f172a;margin:0 0 14px;padding-bottom:8px;border-bottom:2px solid #e2e8f0;">{heading}</h2>'
+        '<section style="margin:34px 0;">'
+        f'<h2 style="font-size:18px;font-weight:700;color:#262626;margin:0 0 16px;padding-bottom:10px;border-bottom:1px solid #eae4db;letter-spacing:-0.01em;">{heading}</h2>'
         + "".join(blocks)
         + "</section>"
     )
 
 
 def _render_map_html(title: str, addr1: str, mapx: Any, mapy: Any) -> str:
-    """OpenStreetMap 무료 iframe 약도와 네이버·카카오·구글 지도 길찾기 버튼을 만든다."""
+    """OpenStreetMap 무료 iframe 약도와 정돈된 톤의 길찾기 버튼을 만든다."""
     try:
         lon = float(str(mapx).strip())
         lat = float(str(mapy).strip())
@@ -596,22 +659,22 @@ def _render_map_html(title: str, addr1: str, mapx: Any, mapy: Any) -> str:
     google_url = f"https://www.google.com/maps/search/?api=1&query={lat:.6f},{lon:.6f}"
 
     btn_style = (
-        "display:inline-block;padding:10px 16px;border-radius:8px;text-decoration:none;"
-        "font-size:14px;font-weight:600;margin:4px 6px 4px 0;"
+        "display:inline-block;padding:9px 15px;border-radius:8px;text-decoration:none;"
+        "font-size:13.5px;font-weight:600;margin:4px 8px 4px 0;"
     )
     return (
-        '<section style="margin:28px 0;">'
-        '<h2 style="font-size:19px;font-weight:700;color:#0f172a;margin:0 0 14px;padding-bottom:8px;border-bottom:2px solid #e2e8f0;">위치 및 길찾기</h2>'
-        '<div style="border-radius:12px;overflow:hidden;border:1px solid #cbd5e1;background:#f1f5f9;">'
+        '<section style="margin:34px 0;">'
+        '<h2 style="font-size:18px;font-weight:700;color:#262626;margin:0 0 16px;padding-bottom:10px;border-bottom:1px solid #eae4db;letter-spacing:-0.01em;">위치 및 길찾기</h2>'
+        '<div style="border-radius:14px;overflow:hidden;border:1px solid #eae4db;background:#faf8f5;">'
         f'<iframe title="{html.escape(title)} 위치 지도" src="{osm_embed_url}" '
         'style="width:100%;height:320px;border:0;display:block;" loading="lazy"></iframe>'
         "</div>"
-        '<div style="margin-top:12px;">'
-        f'<a href="{naver_url}" target="_blank" rel="noopener noreferrer" style="{btn_style}background:#03c75a;color:#ffffff;">네이버 지도 보기</a>'
-        f'<a href="{kakao_url}" target="_blank" rel="noopener noreferrer" style="{btn_style}background:#fee500;color:#191919;">카카오맵 보기</a>'
-        f'<a href="{google_url}" target="_blank" rel="noopener noreferrer" style="{btn_style}background:#2563eb;color:#ffffff;">구글 지도 보기</a>'
+        '<div style="margin-top:14px;">'
+        f'<a href="{naver_url}" target="_blank" rel="noopener noreferrer" style="{btn_style}background:#3d5a4c;color:#ffffff;">네이버 지도로 보기</a>'
+        f'<a href="{kakao_url}" target="_blank" rel="noopener noreferrer" style="{btn_style}background:#f3ede2;color:#262626;border:1px solid #e2d9cb;">카카오맵으로 보기</a>'
+        f'<a href="{google_url}" target="_blank" rel="noopener noreferrer" style="{btn_style}background:#ffffff;color:#4a453f;border:1px solid #dcd5ca;">구글 지도로 보기</a>'
         "</div>"
-        f'<p style="margin:8px 0 0;font-size:12px;color:#64748b;">GPS 좌표: 위도 {lat:.6f}, 경도 {lon:.6f}</p>'
+        f'<p style="margin:10px 0 0;font-size:12px;color:#8c8378;">위치 좌표 · 위도 {lat:.6f}, 경도 {lon:.6f}</p>'
         "</section>"
     )
 
@@ -619,13 +682,14 @@ def _render_map_html(title: str, addr1: str, mapx: Any, mapy: Any) -> str:
 def generate_blog_post(
     bundle: dict[str, Any], category_override: str | None = None
 ) -> dict[str, Any]:
-    """수집된 관광정보 번들을 바탕으로 블로그 제목, HTML 본문, 카테고리 라벨을 생성한다."""
+    """수집된 관광정보와 보강 사진을 바탕으로 20대 여성 어투의 미니멀 에디토리얼 포스트를 생성한다."""
     content_id = str(bundle.get("content_id", ""))
     ctype = str(bundle.get("content_type_id", "12"))
     common = bundle.get("common") or {}
     intro = bundle.get("intro") or {}
     info_list = bundle.get("info_list") or []
     images = bundle.get("images") or []
+    photo_gallery = bundle.get("photo_gallery") or []
     pet_info = bundle.get("pet_info") or {}
 
     title = _clean_text(common.get("title")) or f"국내 여행지 ({content_id})"
@@ -637,7 +701,15 @@ def generate_blog_post(
 
     info_rows = _collect_info_rows(common, intro)
     pet_rows = _collect_pet_rows(pet_info)
-    hero_url, gallery, copyright_codes = _collect_gallery_urls(common, images)
+    hero_url, hero_credit, kor_gallery, photo_cards, copyright_codes = (
+        _collect_gallery_urls(common, images, photo_gallery)
+    )
+
+    photo_kw_hints: list[str] = []
+    for p_item in photo_gallery:
+        for kw in p_item.get("keywords") or []:
+            if kw and kw not in photo_kw_hints:
+                photo_kw_hints.append(kw)
 
     prompt = _build_gemini_prompt(
         title=title,
@@ -648,6 +720,7 @@ def generate_blog_post(
         overview=overview,
         info_rows=info_rows,
         pet_rows=pet_rows,
+        photo_keywords=photo_kw_hints,
     )
     editorial = _call_gemini_editorial(prompt)
     if editorial is None:
@@ -663,139 +736,221 @@ def generate_blog_post(
         )
 
     post_title = str(editorial.get("post_title") or title).strip()
+    subtitle = str(editorial.get("subtitle") or "").strip()
     lead_paragraph = str(editorial.get("lead_paragraph") or "").strip()
-    highlights = [str(x).strip() for x in (editorial.get("highlights") or []) if str(x).strip()]
-    visit_tips = [str(x).strip() for x in (editorial.get("visit_tips") or []) if str(x).strip()]
+    raw_stories = editorial.get("story_paragraphs") or []
+    story_paragraphs = [
+        str(p).strip() for p in raw_stories if str(p).strip()
+    ]
+    if not story_paragraphs and overview:
+        story_paragraphs = _split_story_paragraphs(overview)
+
+    highlights = [
+        str(x).strip()
+        for x in (editorial.get("highlights") or [])
+        if str(x).strip()
+    ]
+    visit_tips = [
+        str(x).strip()
+        for x in (editorial.get("visit_tips") or [])
+        if str(x).strip()
+    ]
+    closing_note = str(editorial.get("closing_note") or "").strip()
+
     # Blogger 공식 3대 카테고리 + '카테고리-지역' 서브 라벨 부여
     labels = [blog_category]
     if region_name and region_name != "국내":
         labels.append(f"{blog_category}-{region_name}")
 
-    # 1. 감성 헤더 & 배지
-    badges_html = (
-        f'<span style="display:inline-block;background:#0f172a;color:#ffffff;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;margin-right:6px;">{html.escape(blog_category)}</span>'
-        f'<span style="display:inline-block;background:#e0f2fe;color:#0369a1;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;margin-right:6px;">{html.escape(region_name)}</span>'
-        f'<span style="display:inline-block;background:#fef3c7;color:#b45309;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;margin-right:6px;">{html.escape(category_name)}</span>'
+    # 1. Warm Editorial Minimal 헤더
+    pet_meta_pill = (
+        '<span style="display:inline-block;margin-left:8px;padding:2px 9px;border-radius:999px;'
+        'background:#eef3f0;color:#3d5a4c;font-size:11.5px;font-weight:600;">반려동물 동반</span>'
+        if pet_rows
+        else ""
     )
-    if pet_rows:
-        badges_html += '<span style="display:inline-block;background:#dcfce7;color:#15803d;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;">반려동물 동반 정보</span>'
-
+    subtitle_html = (
+        f'<p style="margin:0 0 10px;font-size:15px;line-height:1.6;color:#736c63;">{html.escape(subtitle)}</p>'
+        if subtitle
+        else ""
+    )
+    addr_html = (
+        f'<p style="margin:0;font-size:13px;color:#8c8378;">{html.escape(addr1)}</p>'
+        if addr1
+        else ""
+    )
     header_html = (
-        '<div style="background:linear-gradient(135deg,#f8fafc 0%,#eff6ff 100%);padding:22px;border-radius:14px;border:1px solid #dbeafe;margin-bottom:22px;">'
-        f'<div style="margin-bottom:10px;">{badges_html}</div>'
-        f'<h1 style="font-size:24px;line-height:1.35;color:#0f172a;margin:0 0 10px;">{html.escape(title)}</h1>'
-        + (
-            f'<p style="margin:0;font-size:14px;color:#475569;">📍 {html.escape(addr1)}</p>'
-            if addr1
-            else ""
-        )
-        + "</div>"
+        '<header style="padding:4px 0 22px;border-bottom:1px solid #eae4db;margin-bottom:26px;">'
+        '<div style="margin-bottom:10px;font-size:12px;font-weight:600;letter-spacing:0.04em;color:#3d5a4c;">'
+        f'{html.escape(blog_category)} · {html.escape(region_name)} · {html.escape(category_name)}{pet_meta_pill}'
+        "</div>"
+        f'<h1 style="font-size:26px;line-height:1.38;font-weight:700;color:#262626;letter-spacing:-0.02em;margin:0 0 10px;">{html.escape(title)}</h1>'
+        f"{subtitle_html}{addr_html}"
+        "</header>"
     )
 
-    # 2. 대표 이미지 (원본 URL 유지)
+    # 2. 와이드 대표 이미지
     hero_html = ""
     if hero_url:
+        hero_caption = f"{title} ({hero_credit})" if hero_credit else title
         hero_html = (
-            '<figure style="margin:0 0 24px;text-align:center;">'
+            '<figure style="margin:0 0 28px;text-align:center;">'
             f'<img src="{html.escape(hero_url)}" alt="{html.escape(title)} 대표 사진" '
-            'style="width:100%;max-width:760px;height:auto;border-radius:12px;box-shadow:0 6px 20px rgba(15,23,42,0.08);" />'
-            f'<figcaption style="margin-top:8px;font-size:12px;color:#64748b;">{html.escape(title)} (출처: 한국관광공사)</figcaption>'
+            'style="width:100%;max-width:760px;height:auto;border-radius:14px;display:block;margin:0 auto;box-shadow:0 8px 28px rgba(38,38,38,0.06);" />'
+            f'<figcaption style="margin-top:10px;font-size:12px;color:#8c8378;">{html.escape(hero_caption)}</figcaption>'
             "</figure>"
         )
 
-    # 3. 여행지 소개 및 AI 해설
-    overview_html = _format_html_text(overview)
-    highlights_li = "".join(
-        f'<li style="margin-bottom:6px;line-height:1.65;">{html.escape(item)}</li>'
-        for item in highlights
+    # 3. 도입 에세이 카드 + 본문 스토리 + 매력 포인트 & 방문 팁 2단 카드
+    story_heading = {
+        "그날의 미식": "공간과 맛 이야기",
+        "그날의 여정": "길 위에서 만나는 풍경",
+    }.get(blog_category, "천천히 둘러보는 이야기")
+
+    story_body_html = "".join(
+        f'<p style="margin:0 0 16px;font-size:15.5px;line-height:1.95;color:#333333;">{html.escape(p)}</p>'
+        for p in story_paragraphs
     )
-    tips_li = "".join(
-        f'<li style="margin-bottom:6px;line-height:1.65;">{html.escape(item)}</li>'
-        for item in visit_tips
+    story_section = (
+        '<div style="margin:26px 0 8px;">'
+        f'<h2 style="font-size:18px;font-weight:700;color:#262626;margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid #eae4db;letter-spacing:-0.01em;">{story_heading}</h2>'
+        f"{story_body_html}</div>"
+        if story_body_html
+        else ""
+    )
+
+    highlights_items = "".join(
+        '<li style="list-style:none;margin-bottom:10px;line-height:1.75;font-size:14px;color:#333333;">'
+        f'<span style="color:#3d5a4c;font-weight:700;margin-right:8px;">{idx:02d}</span>{html.escape(item)}'
+        "</li>"
+        for idx, item in enumerate(highlights, start=1)
+    )
+    tips_items = "".join(
+        '<li style="list-style:none;margin-bottom:10px;line-height:1.75;font-size:14px;color:#333333;">'
+        f'<span style="color:#3d5a4c;font-weight:700;margin-right:8px;">{idx:02d}</span>{html.escape(item)}'
+        "</li>"
+        for idx, item in enumerate(visit_tips, start=1)
+    )
+
+    two_col_cards = (
+        '<div style="display:flex;flex-wrap:wrap;gap:14px;margin:24px 0 6px;">'
+        '<div style="flex:1 1 280px;background:#ffffff;border:1px solid #eae4db;border-radius:14px;padding:20px;">'
+        '<h3 style="margin:0 0 14px;font-size:15px;font-weight:700;color:#262626;letter-spacing:-0.01em;">이곳이 좋았던 이유</h3>'
+        f'<ul style="margin:0;padding:0;">{highlights_items}</ul>'
+        "</div>"
+        '<div style="flex:1 1 280px;background:#faf8f5;border:1px solid #eae4db;border-radius:14px;padding:20px;">'
+        '<h3 style="margin:0 0 14px;font-size:15px;font-weight:700;color:#3d5a4c;letter-spacing:-0.01em;">다녀오기 전 작은 팁</h3>'
+        f'<ul style="margin:0;padding:0;">{tips_items}</ul>'
+        "</div>"
+        "</div>"
+        if (highlights_items or tips_items)
+        else ""
     )
 
     intro_section_html = (
-        '<section style="margin:24px 0;">'
-        f'<p style="font-size:16px;line-height:1.8;color:#1e293b;background:#fffbeb;padding:16px 18px;border-left:4px solid #f59e0b;border-radius:8px;margin:0 0 18px;">{html.escape(lead_paragraph)}</p>'
-        + (
-            '<h2 style="font-size:19px;font-weight:700;color:#0f172a;margin:22px 0 10px;padding-bottom:8px;border-bottom:2px solid #e2e8f0;">여행지 소개</h2>'
-            f'<div style="font-size:15px;line-height:1.85;color:#334155;">{overview_html}</div>'
-            if overview_html
-            else ""
-        )
-        + (
-            '<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:20px;">'
-            '<div style="flex:1 1 280px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:16px;">'
-            '<h3 style="margin:0 0 10px;font-size:16px;color:#0369a1;">✨ 핵심 매력 포인트</h3>'
-            f'<ul style="margin:0;padding-left:18px;font-size:14px;color:#1e293b;">{highlights_li}</ul>'
-            "</div>"
-            '<div style="flex:1 1 280px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;">'
-            '<h3 style="margin:0 0 10px;font-size:16px;color:#15803d;">💡 방문 전 체크 팁</h3>'
-            f'<ul style="margin:0;padding-left:18px;font-size:14px;color:#1e293b;">{tips_li}</ul>'
-            "</div>"
-            "</div>"
-            if (highlights_li or tips_li)
-            else ""
-        )
-        + "</section>"
+        '<section style="margin:26px 0;">'
+        '<div style="background:#faf8f5;border-left:3px solid #3d5a4c;padding:18px 20px;border-radius:0 12px 12px 0;margin:0 0 24px;">'
+        f'<p style="margin:0;font-size:15.5px;line-height:1.9;color:#262626;">{html.escape(lead_paragraph)}</p>'
+        "</div>"
+        f"{story_section}{two_col_cards}"
+        "</section>"
     )
 
-    # 4. 방문 전 필수 체크 정보 표
+    # 4. 한눈에 보는 방문 정보 표
     table_rows_html = ""
     for label, val in info_rows:
         if label == "홈페이지":
             safe_url = html.escape(val)
-            cell_html = f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;word-break:break-all;">{safe_url}</a>'
+            cell_html = f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" style="color:#3d5a4c;text-decoration:underline;word-break:break-all;">{safe_url}</a>'
         else:
             cell_html = _format_html_text(val)
         table_rows_html += (
             "<tr>"
-            f'<th style="width:28%;min-width:110px;text-align:left;padding:11px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;color:#334155;font-size:14px;vertical-align:top;">{html.escape(label)}</th>'
-            f'<td style="padding:11px 14px;border-bottom:1px solid #e2e8f0;color:#1e293b;font-size:14px;line-height:1.65;">{cell_html}</td>'
+            f'<th style="width:28%;min-width:105px;text-align:left;padding:12px 10px;border-bottom:1px solid #ece7df;color:#736c63;font-size:13.5px;font-weight:600;vertical-align:top;">{html.escape(label)}</th>'
+            f'<td style="padding:12px 10px;border-bottom:1px solid #ece7df;color:#262626;font-size:14px;line-height:1.7;">{cell_html}</td>'
             "</tr>"
         )
 
     info_table_html = (
-        '<section style="margin:28px 0;">'
-        '<h2 style="font-size:19px;font-weight:700;color:#0f172a;margin:0 0 14px;padding-bottom:8px;border-bottom:2px solid #e2e8f0;">이용 정보 한눈에 보기</h2>'
-        '<table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">'
+        '<section style="margin:34px 0;">'
+        '<h2 style="font-size:18px;font-weight:700;color:#262626;margin:0 0 12px;padding-bottom:10px;border-bottom:1px solid #eae4db;letter-spacing:-0.01em;">방문 전에 참고할 정보</h2>'
+        '<table style="width:100%;border-collapse:collapse;border-top:1px solid #262626;">'
         f"<tbody>{table_rows_html}</tbody>"
         "</table></section>"
         if table_rows_html
         else ""
     )
 
-    # 5. 추가 상세 안내 및 반려동물 동반 정보
+    # 5. 추가 상세 안내 및 반려동물 안내
     extra_info_html = _render_extra_info_html(ctype, info_list)
     pet_html = ""
     if pet_rows:
         pet_items_html = "".join(
-            f'<li style="margin-bottom:6px;line-height:1.6;"><strong>{html.escape(k)}</strong>: {_format_html_text(v)}</li>'
+            f'<li style="margin-bottom:6px;line-height:1.7;"><strong>{html.escape(k)}</strong> · {_format_html_text(v)}</li>'
             for k, v in pet_rows
         )
         pet_html = (
-            '<section style="margin:24px 0;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:18px;">'
-            '<h2 style="font-size:18px;font-weight:700;color:#166534;margin:0 0 10px;">🐾 반려동물 동반 여행 안내</h2>'
-            f'<ul style="margin:0;padding-left:18px;font-size:14px;color:#1e293b;">{pet_items_html}</ul>'
+            '<section style="margin:28px 0;background:#eef3f0;border:1px solid #d5e0da;border-radius:14px;padding:18px 20px;">'
+            '<h2 style="font-size:16px;font-weight:700;color:#3d5a4c;margin:0 0 10px;">반려동물과 함께 가신다면</h2>'
+            f'<ul style="margin:0;padding-left:18px;font-size:14px;color:#262626;">{pet_items_html}</ul>'
             "</section>"
         )
 
-    # 6. 생생 포토 갤러리
-    gallery_html = ""
-    if gallery:
-        cards = "".join(
-            '<div style="flex:1 1 240px;max-width:calc(50% - 6px);min-width:200px;">'
+    # 6. 기본 포토 갤러리 + 한국관광공사 관광사진갤러리 보강 섹션
+    kor_gallery_html = ""
+    if kor_gallery:
+        kor_cards = "".join(
+            '<div style="flex:1 1 240px;max-width:calc(50% - 6px);min-width:210px;">'
             f'<img src="{html.escape(g["url"])}" alt="{html.escape(g["name"])}" '
-            'style="width:100%;height:auto;border-radius:10px;display:block;border:1px solid #e2e8f0;" />'
+            'style="width:100%;height:auto;border-radius:12px;display:block;border:1px solid #eae4db;" />'
             "</div>"
-            for g in gallery
+            for g in kor_gallery
         )
-        gallery_html = (
-            '<section style="margin:28px 0;">'
-            '<h2 style="font-size:19px;font-weight:700;color:#0f172a;margin:0 0 14px;padding-bottom:8px;border-bottom:2px solid #e2e8f0;">포토 갤러리</h2>'
-            f'<div style="display:flex;flex-wrap:wrap;gap:12px;">{cards}</div>'
+        kor_gallery_html = (
+            '<section style="margin:34px 0;">'
+            '<h2 style="font-size:18px;font-weight:700;color:#262626;margin:0 0 16px;padding-bottom:10px;border-bottom:1px solid #eae4db;letter-spacing:-0.01em;">조금 더 담아본 사진들</h2>'
+            f'<div style="display:flex;flex-wrap:wrap;gap:12px;">{kor_cards}</div>'
             "</section>"
         )
+
+    photo_cards_html = ""
+    photo_photographers: list[str] = []
+    if photo_cards:
+        rendered_photo_cards = ""
+        for p_card in photo_cards:
+            photo_photographers.append(p_card["photographer"])
+            meta_parts = [p_card["title"]]
+            if p_card["photo_date"]:
+                meta_parts.append(f"촬영 {p_card['photo_date']}")
+            meta_parts.append(p_card["photographer"])
+            tag_chips = "".join(
+                f'<span style="display:inline-block;margin:4px 4px 0 0;padding:2px 8px;border-radius:999px;background:#ffffff;border:1px solid #e6dfd5;font-size:11px;color:#736c63;">#{html.escape(t)}</span>'
+                for t in p_card["keywords"]
+            )
+            rendered_photo_cards += (
+                '<div style="flex:1 1 260px;max-width:calc(50% - 7px);min-width:220px;background:#faf8f5;border:1px solid #eae4db;border-radius:12px;overflow:hidden;">'
+                f'<img src="{html.escape(p_card["url"])}" alt="{html.escape(p_card["title"])}" '
+                'style="width:100%;height:auto;display:block;" />'
+                '<div style="padding:11px 13px;">'
+                f'<div style="font-size:12.5px;font-weight:600;color:#262626;line-height:1.5;">{html.escape(" · ".join(meta_parts))}</div>'
+                f'{f"<div>{tag_chips}</div>" if tag_chips else ""}'
+                "</div></div>"
+            )
+        photo_cards_html = (
+            '<section style="margin:34px 0;">'
+            '<h2 style="font-size:18px;font-weight:700;color:#262626;margin:0 0 6px;letter-spacing:-0.01em;">함께 담아본 풍경</h2>'
+            '<p style="margin:0 0 16px;font-size:13px;color:#736c63;padding-bottom:10px;border-bottom:1px solid #eae4db;">한국관광공사 관광사진갤러리에서 전하는 이곳의 또 다른 시선이에요.</p>'
+            f'<div style="display:flex;flex-wrap:wrap;gap:14px;">{rendered_photo_cards}</div>'
+            "</section>"
+        )
+
+    # 대표 이미지가 관광사진갤러리에서 승격된 경우에도 푸터 촬영자 목록에 포함
+    if hero_credit.startswith("출처 · 한국관광공사 관광사진갤러리"):
+        for p_item in photo_gallery:
+            cred = _clean_text(p_item.get("photographer"))
+            if cred:
+                photo_photographers.insert(0, cred)
+                break
 
     # 7. 무료 지도 및 길찾기
     map_html = _render_map_html(
@@ -805,18 +960,25 @@ def generate_blog_post(
         mapy=common.get("mapy"),
     )
 
-    # 8. 공공누리(저작권) 출처 푸터
-    copyright_notice = _resolve_copyright_notice(copyright_codes)
+    # 8. 마무리 문장 + 공공누리/촬영자 출처 푸터
+    closing_html = (
+        '<div style="margin:30px 0 22px;padding:18px 20px;background:#faf8f5;border-radius:12px;border:1px solid #eae4db;text-align:center;">'
+        f'<p style="margin:0;font-size:14.5px;line-height:1.8;color:#4a453f;">{html.escape(closing_note)}</p>'
+        "</div>"
+        if closing_note
+        else ""
+    )
+    copyright_notice = _resolve_copyright_notice(copyright_codes, photo_photographers)
     footer_html = (
-        '<footer style="margin-top:32px;padding:16px 18px;background:#f8fafc;border:1px solid #e2e8f0;'
-        'border-radius:10px;font-size:13px;line-height:1.65;color:#475569;">'
+        '<footer style="margin-top:24px;padding:16px 18px;background:#faf8f5;border:1px solid #eae4db;'
+        'border-radius:10px;font-size:12.5px;line-height:1.7;color:#736c63;">'
         f"{copyright_notice}"
         "</footer>"
     )
 
     full_html = (
-        '<div style="max-width:780px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,\'Apple SD Gothic Neo\',\'Malgun Gothic\',sans-serif;color:#1e293b;">'
-        f"{header_html}{hero_html}{intro_section_html}{info_table_html}{extra_info_html}{pet_html}{gallery_html}{map_html}{footer_html}"
+        '<div style="max-width:760px;margin:0 auto;padding:8px 4px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,\'Apple SD Gothic Neo\',\'Pretendard\',\'Malgun Gothic\',sans-serif;color:#262626;">'
+        f"{header_html}{hero_html}{intro_section_html}{kor_gallery_html}{photo_cards_html}{info_table_html}{extra_info_html}{pet_html}{map_html}{closing_html}{footer_html}"
         "</div>"
     )
 
@@ -828,4 +990,6 @@ def generate_blog_post(
         "html": full_html,
         "labels": labels,
         "ai_model": editorial.get("ai_model", "unknown"),
+        "photo_gallery_count": len(photo_cards)
+        + (1 if hero_credit.startswith("출처 · 한국관광공사 관광사진갤러리") else 0),
     }

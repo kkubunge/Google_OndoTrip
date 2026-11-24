@@ -24,6 +24,13 @@ TOUR_API_ENDPOINT = os.getenv(
     "TOUR_API_ENDPOINT", "https://apis.data.go.kr/B551011/KorService2"
 ).rstrip("/")
 
+# 한국관광공사 관광사진 정보 서비스 (PhotoGalleryService1) — 미지정 시 TOUR_API_KEY 재사용
+PHOTO_API_KEY = os.getenv("PHOTO_API_KEY", "").strip() or TOUR_API_KEY
+PHOTO_API_ENDPOINT = os.getenv(
+    "PHOTO_API_ENDPOINT", "https://apis.data.go.kr/B551011/PhotoGalleryService1"
+).rstrip("/")
+PHOTO_GALLERY_MAX_IMAGES = 4
+
 BLOGGER_BLOG_ID = os.getenv("BLOGGER_BLOG_ID", "").strip()
 BLOGGER_URL = os.getenv("BLOGGER_URL", "").strip()
 GOOGLE_CLIENT_SECRET_FILE = os.getenv("GOOGLE_CLIENT_SECRET_FILE", "").strip()

@@ -85,6 +85,8 @@ jobs:
           PYTHONIOENCODING: utf-8
           TOUR_API_KEY: ${{ secrets.TOUR_API_KEY }}
           TOUR_API_ENDPOINT: https://apis.data.go.kr/B551011/KorService2
+          PHOTO_API_KEY: ${{ secrets.PHOTO_API_KEY || secrets.TOUR_API_KEY }}
+          PHOTO_API_ENDPOINT: https://apis.data.go.kr/B551011/PhotoGalleryService1
           BLOGGER_BLOG_ID: ${{ secrets.BLOGGER_BLOG_ID }}
           BLOGGER_URL: ${{ secrets.BLOGGER_URL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
