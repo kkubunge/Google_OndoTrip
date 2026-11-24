@@ -545,9 +545,9 @@ def _collect_gallery_urls(
     list[dict[str, Any]],
     list[str],
 ]:
-    """대표 이미지, KorService2 갤러리, 관광사진(PhotoGalleryService1) 보강 카드, 저작권 코드를 수집한다."""
+    """대표 이미지, 추가 사진 목록, 대표 승격 시 촬영자 정보, 저작권 코드를 수집한다."""
     hero_url = _to_https(str(common.get("firstimage") or ""))
-    hero_credit = "출처 · 한국관광공사 국문 관광정보 서비스" if hero_url else ""
+    hero_photographer = ""
     copyright_codes: list[str] = []
     if common.get("cpyrhtDivCd"):
         copyright_codes.append(str(common["cpyrhtDivCd"]).strip())
@@ -565,7 +565,6 @@ def _collect_gallery_urls(
             copyright_codes.append(str(img["cpyrhtDivCd"]).strip())
         if not hero_url:
             hero_url = orig_url
-            hero_credit = "출처 · 한국관광공사 국문 관광정보 서비스"
             seen_urls.add(orig_url)
             continue
         if orig_url in seen_urls:
@@ -591,7 +590,7 @@ def _collect_gallery_urls(
         p_date = _clean_text(item.get("photo_date"))
         if not hero_url:
             hero_url = p_url
-            hero_credit = f"출처 · 한국관광공사 관광사진갤러리 ({photographer})"
+            hero_photographer = photographer
             continue
         photo_cards.append(
             {
@@ -600,16 +599,13 @@ def _collect_gallery_urls(
                 "photo_date": p_date,
                 "location": _clean_text(item.get("location")),
                 "photographer": photographer,
-                "keywords": [
-                    _clean_text(k) for k in (item.get("keywords") or []) if _clean_text(k)
-                ][:3],
                 "matched_spot": _clean_text(item.get("matched_spot")),
             }
         )
         if len(photo_cards) >= config.PHOTO_GALLERY_MAX_IMAGES:
             break
 
-    return hero_url, hero_credit, kor_gallery, photo_cards, copyright_codes
+    return hero_url, hero_photographer, kor_gallery, photo_cards, copyright_codes
 
 
 def _build_inline_photos(
@@ -618,20 +614,19 @@ def _build_inline_photos(
     spot_title: str,
     max_photos: int = 6,
 ) -> list[dict[str, Any]]:
-    """관광사진 보강 컷과 KorService2 추가 컷을 고르게 섞어 본문 대형 사진 리스트를 만든다."""
+    """보강 사진과 기본 추가 사진을 구분 없이 고르게 섞어 본문 대형 사진 리스트를 만든다."""
     normalized_photo: list[dict[str, Any]] = []
     for p_card in photo_cards:
-        meta_parts = [p_card["title"]]
-        if p_card["photo_date"]:
-            meta_parts.append(f"촬영 {p_card['photo_date']}")
-        meta_parts.append(p_card["photographer"])
+        caption = (
+            f"{p_card['title']} ({p_card['photo_date']})"
+            if p_card["photo_date"]
+            else p_card["title"]
+        )
         normalized_photo.append(
             {
-                "source": "PhotoGalleryService1",
                 "url": p_card["url"],
                 "alt": p_card["title"] or spot_title,
-                "caption": f"{' · '.join(meta_parts)} (한국관광공사 관광사진갤러리)",
-                "tags": p_card.get("keywords") or [],
+                "caption": caption,
                 "photographer": p_card["photographer"],
             }
         )
@@ -642,11 +637,9 @@ def _build_inline_photos(
         label = spot_title if (not g_name or g_name == "관광지 사진") else g_name
         normalized_kor.append(
             {
-                "source": "KorService2",
                 "url": g["url"],
                 "alt": label,
-                "caption": f"{label} (출처 · 한국관광공사)",
-                "tags": [],
+                "caption": label,
                 "photographer": "",
             }
         )
@@ -668,21 +661,11 @@ def _build_inline_photos(
 
 def _render_large_photo_figure(photo: dict[str, Any]) -> str:
     """원본 비율 무크롭으로 본문 폭에 맞춰 큼직하게 보여주는 대형 사진 HTML을 만든다."""
-    tags = photo.get("tags") or []
-    tags_html = ""
-    if tags:
-        chips = "".join(
-            f'<span style="display:inline-block;margin:0 3px;padding:2px 8px;border-radius:999px;background:#faf8f5;border:1px solid #e6dfd5;font-size:11px;color:#736c63;">#{html.escape(t)}</span>'
-            for t in tags[:3]
-        )
-        tags_html = f'<div style="margin-top:6px;">{chips}</div>'
-
     return (
         '<figure style="margin:26px 0 32px;text-align:center;">'
         f'<img src="{html.escape(photo["url"])}" alt="{html.escape(photo["alt"])}" '
         'style="display:block;margin:0 auto;max-height:640px;width:auto;max-width:100%;height:auto;border-radius:14px;box-shadow:0 8px 26px rgba(38,38,38,0.06);" />'
         f'<figcaption style="margin-top:10px;font-size:12px;line-height:1.55;color:#8c8378;">{html.escape(photo["caption"])}</figcaption>'
-        f"{tags_html}"
         "</figure>"
     )
 
@@ -691,7 +674,7 @@ def _resolve_copyright_notice(
     copyright_codes: list[str],
     photo_photographers: list[str] | None = None,
 ) -> str:
-    """공공누리 유형 및 관광사진갤러리 촬영자 출처 문구를 생성한다."""
+    """공공누리 유형 및 촬영자 정보를 하나의 자연스러운 통합 출처 문구로 생성한다."""
     normalized = {c.upper() for c in copyright_codes if c}
     if "TYPE3" in normalized:
         kogl_text = "공공누리 제3유형(출처표시 + 변경금지)"
@@ -703,20 +686,17 @@ def _resolve_copyright_notice(
         kogl_text = "공공누리(한국관광공사 관광정보 서비스 기준)"
         rule_note = "제공된 공공데이터 및 이미지의 저작권은 한국관광공사에 있어요."
 
-    extra_photo_source = ""
     unique_photographers = [
         p for p in dict.fromkeys(photo_photographers or []) if p
     ]
     if unique_photographers:
-        joined_credits = ", ".join(unique_photographers)
-        extra_photo_source = (
-            f" · <strong>추가 사진</strong>: 한국관광공사 관광사진갤러리"
-            f"(PhotoGalleryService1 · 촬영 {html.escape(joined_credits)})"
-        )
+        source_text = f"한국관광공사 (사진 촬영: {html.escape(', '.join(unique_photographers))})"
+    else:
+        source_text = "한국관광공사"
 
     return (
-        f"<strong>데이터 및 사진 출처</strong>: 한국관광공사 국문 관광정보 서비스(TourAPI 4.4) "
-        f"| <strong>저작권</strong>: {html.escape(kogl_text)}{extra_photo_source}<br />"
+        f"<strong>출처</strong>: {source_text} "
+        f"| <strong>저작권</strong>: {html.escape(kogl_text)}<br />"
         f'<span style="color:#8c8378;font-size:12px;">{html.escape(rule_note)}</span>'
     )
 
@@ -839,7 +819,7 @@ def generate_blog_post(
 
     info_rows = _collect_info_rows(common, intro)
     pet_rows = _collect_pet_rows(pet_info)
-    hero_url, hero_credit, kor_gallery, photo_cards, copyright_codes = (
+    hero_url, hero_photographer, kor_gallery, photo_cards, copyright_codes = (
         _collect_gallery_urls(common, images, photo_gallery)
     )
     inline_photos = _build_inline_photos(
@@ -917,12 +897,11 @@ def generate_blog_post(
     # 2. 대표 대형 이미지 (원본 비율 무크롭)
     hero_html = ""
     if hero_url:
-        hero_caption = f"{title} ({hero_credit})" if hero_credit else title
         hero_html = (
             '<figure style="margin:0 0 28px;text-align:center;">'
             f'<img src="{html.escape(hero_url)}" alt="{html.escape(title)} 대표 사진" '
             'style="display:block;margin:0 auto;max-height:640px;width:auto;max-width:100%;height:auto;border-radius:14px;box-shadow:0 8px 28px rgba(38,38,38,0.06);" />'
-            f'<figcaption style="margin-top:10px;font-size:12px;color:#8c8378;">{html.escape(hero_caption)}</figcaption>'
+            f'<figcaption style="margin-top:10px;font-size:12px;color:#8c8378;">{html.escape(title)}</figcaption>'
             "</figure>"
         )
 
@@ -1002,18 +981,12 @@ def generate_blog_post(
             "</section>"
         )
 
-    # 푸터용 관광사진갤러리 촬영자 수집
+    # 푸터 통합 출처 표기용 촬영자 수집
     photo_photographers: list[str] = [
-        p["photographer"]
-        for p in inline_photos
-        if p.get("source") == "PhotoGalleryService1" and p.get("photographer")
+        p["photographer"] for p in inline_photos if p.get("photographer")
     ]
-    if hero_credit.startswith("출처 · 한국관광공사 관광사진갤러리"):
-        for p_item in photo_gallery:
-            cred = _clean_text(p_item.get("photographer"))
-            if cred:
-                photo_photographers.insert(0, cred)
-                break
+    if hero_photographer:
+        photo_photographers.insert(0, hero_photographer)
 
     # 6. 무료 지도 및 길찾기
     map_html = _render_map_html(
@@ -1023,7 +996,7 @@ def generate_blog_post(
         mapy=common.get("mapy"),
     )
 
-    # 7. 마무리 문장 + 공공누리/촬영자 출처 푸터
+    # 7. 마무리 문장 + 공공누리/촬영자 통합 출처 푸터
     closing_html = (
         '<div style="margin:30px 0 22px;padding:18px 20px;background:#faf8f5;border-radius:12px;border:1px solid #eae4db;text-align:center;">'
         f'<p style="margin:0;font-size:14.5px;line-height:1.8;color:#4a453f;">{html.escape(closing_note)}</p>'
@@ -1053,6 +1026,5 @@ def generate_blog_post(
         "html": full_html,
         "labels": labels,
         "ai_model": editorial.get("ai_model", "unknown"),
-        "photo_gallery_count": len(photo_cards)
-        + (1 if hero_credit.startswith("출처 · 한국관광공사 관광사진갤러리") else 0),
+        "photo_gallery_count": len(photo_cards) + (1 if hero_photographer else 0),
     }
