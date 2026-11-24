@@ -788,6 +788,21 @@ def _resolve_copyright_notice(
     )
 
 
+def _parse_valid_korea_coords(
+    mapx: Any, mapy: Any
+) -> tuple[float, float] | None:
+    """대한민국 유효 범위 내 위도·경도(lat, lon)만 파싱하고 (0, 0) 등 무효 좌표는 None을 반환한다."""
+    try:
+        lon = float(str(mapx).strip())
+        lat = float(str(mapy).strip())
+    except (TypeError, ValueError):
+        return None
+
+    if not (33.0 <= lat <= 39.0 and 124.0 <= lon <= 132.5):
+        return None
+    return lat, lon
+
+
 def _build_map_urls(
     title: str,
     addr1: str,
@@ -801,14 +816,10 @@ def _build_map_urls(
     naver_url = f"https://map.naver.com/p/search/{quote(query_text)}" if query_text else ""
     kakao_search_url = f"https://map.kakao.com/?q={quote(query_text)}" if query_text else ""
 
-    try:
-        lon = float(str(mapx).strip())
-        lat = float(str(mapy).strip())
-    except (TypeError, ValueError):
+    coords = _parse_valid_korea_coords(mapx, mapy)
+    if coords is None:
         return {"has_coords": False, "naver_url": naver_url, "kakao_url": kakao_search_url}
-
-    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
-        return {"has_coords": False, "naver_url": naver_url, "kakao_url": kakao_search_url}
+    lat, lon = coords
 
     bbox = (
         f"{lon - span_lon:.6f},{lat - span_lat:.6f},"
@@ -975,6 +986,132 @@ def _render_map_html(title: str, addr1: str, mapx: Any, mapy: Any) -> str:
         f'<a href="{info["google_url"]}" target="_blank" rel="noopener noreferrer" style="{btn_style}background:#ffffff;color:#4a453f;border:1px solid #dcd5ca;">구글 지도로 보기</a>'
         "</div>"
         f'<p style="margin:10px 0 0;font-size:12px;color:#8c8378;">위치 좌표 · 위도 {info["lat"]:.6f}, 경도 {info["lon"]:.6f}</p>'
+        "</section>"
+    )
+
+
+def _render_course_overview_map_html(
+    title: str,
+    info_list: list[dict[str, Any]],
+    content_id: str,
+) -> str:
+    """여행코스(여정)의 모든 유효 경유지 좌표를 번호 마커와 동선으로 한눈에 보여주는 통합 지도를 만든다."""
+    stops: list[dict[str, Any]] = []
+    for idx, item in enumerate(info_list, start=1):
+        coords = _parse_valid_korea_coords(item.get("sub_mapx"), item.get("sub_mapy"))
+        if coords is None:
+            continue
+        lat, lon = coords
+        subname = _clean_text(item.get("subname")) or f"코스 {idx}"
+        sub_addr1 = _clean_text(item.get("sub_addr1"))
+        urls = _build_map_urls(subname, sub_addr1, lon, lat)
+        stops.append(
+            {
+                "num": idx,
+                "name": subname,
+                "addr": sub_addr1,
+                "lat": lat,
+                "lon": lon,
+                "naver_url": urls["naver_url"],
+            }
+        )
+
+    if not stops:
+        return ""
+    if len(stops) == 1:
+        only = stops[0]
+        return _render_map_html(only["name"], only["addr"], only["lon"], only["lat"])
+
+    lats = [s["lat"] for s in stops]
+    lons = [s["lon"] for s in stops]
+    pad_lat = max((max(lats) - min(lats)) * 0.18, 0.008)
+    pad_lon = max((max(lons) - min(lons)) * 0.18, 0.012)
+    bbox = (
+        f"{min(lons) - pad_lon:.6f},{min(lats) - pad_lat:.6f},"
+        f"{max(lons) + pad_lon:.6f},{max(lats) + pad_lat:.6f}"
+    )
+    fallback_osm_url = (
+        f"https://www.openstreetmap.org/export/embed.html?bbox={quote(bbox, safe=',')}"
+        "&layer=mapnik"
+    )
+
+    dir_points = "/".join(f"{s['lat']:.6f},{s['lon']:.6f}" for s in stops[:10])
+    google_dir_url = f"https://www.google.com/maps/dir/{dir_points}"
+
+    safe_cid = re.sub(r"[^a-zA-Z0-9_-]", "", str(content_id or "course")) or "course"
+    map_dom_id = f"ondo-course-map-{safe_cid}"
+    stops_json = json.dumps(stops, ensure_ascii=False).replace("</", "<\\/")
+
+    chip_parts: list[str] = []
+    for s in stops:
+        chip_label = f"{s['num']:02d} {s['name']}"
+        if s["naver_url"]:
+            chip_parts.append(
+                f'<a href="{s["naver_url"]}" target="_blank" rel="noopener noreferrer" '
+                'style="display:inline-block;padding:5px 10px;border-radius:999px;background:#faf8f5;'
+                'border:1px solid #e6dfd5;color:#262626;font-size:12px;font-weight:600;text-decoration:none;margin:3px 4px 3px 0;">'
+                f"{html.escape(chip_label)}</a>"
+            )
+        else:
+            chip_parts.append(
+                '<span style="display:inline-block;padding:5px 10px;border-radius:999px;background:#faf8f5;'
+                'border:1px solid #e6dfd5;color:#262626;font-size:12px;font-weight:600;margin:3px 4px 3px 0;">'
+                f"{html.escape(chip_label)}</span>"
+            )
+    chips_html = '<span style="color:#8c8378;font-size:12px;margin:0 4px 0 0;">→</span>'.join(
+        chip_parts
+    )
+
+    script_html = (
+        "<script>"
+        "(function(){"
+        f"var el=document.getElementById({json.dumps(map_dom_id)});"
+        "if(!el)return;"
+        f"var stops={stops_json};"
+        "function init(){"
+        "if(!window.L||!stops.length)return;"
+        'el.innerHTML="";'
+        "var map=L.map(el,{scrollWheelZoom:false});"
+        'L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"&copy; OpenStreetMap"}).addTo(map);'
+        "var pts=[];"
+        "stops.forEach(function(s){"
+        "var ll=[s.lat,s.lon];pts.push(ll);"
+        'var icon=L.divIcon({className:"",iconSize:[26,26],iconAnchor:[13,13],'
+        'html:\'<div style="width:26px;height:26px;border-radius:999px;background:#3d5a4c;color:#ffffff;font-size:12px;font-weight:700;line-height:26px;text-align:center;border:2px solid #ffffff;box-shadow:0 2px 6px rgba(0,0,0,0.28);">\'+s.num+"</div>"});'
+        'var pop=document.createElement("div");pop.style.fontSize="13px";pop.style.lineHeight="1.5";'
+        'var t=document.createElement("strong");t.textContent="COURSE "+String(s.num).padStart(2,"0")+" · "+s.name;pop.appendChild(t);'
+        'if(s.addr){var a=document.createElement("div");a.style.color="#736c63";a.style.fontSize="12px";a.style.marginTop="2px";a.textContent=s.addr;pop.appendChild(a);}'
+        'if(s.naver_url){var lk=document.createElement("a");lk.href=s.naver_url;lk.target="_blank";lk.rel="noopener noreferrer";lk.style.display="inline-block";lk.style.marginTop="6px";lk.style.color="#3d5a4c";lk.style.fontWeight="600";lk.textContent="네이버 지도에서 보기";pop.appendChild(lk);}'
+        "L.marker(ll,{icon:icon}).addTo(map).bindPopup(pop);"
+        "});"
+        'if(pts.length>=2){L.polyline(pts,{color:"#3d5a4c",weight:3.5,opacity:0.85,dashArray:"6, 6"}).addTo(map);}'
+        "map.fitBounds(L.latLngBounds(pts),{padding:[36,36]});"
+        "}"
+        'var cssUrl="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css";'
+        'if(!document.querySelector(\'link[href="\'+cssUrl+\'"]\')){var lnk=document.createElement("link");lnk.rel="stylesheet";lnk.href=cssUrl;document.head.appendChild(lnk);}'
+        "if(window.L){init();return;}"
+        'var sc=document.createElement("script");sc.src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js";sc.onload=init;document.head.appendChild(sc);'
+        "})();"
+        "</script>"
+    )
+
+    btn_style = (
+        "display:inline-block;padding:9px 15px;border-radius:8px;text-decoration:none;"
+        "font-size:13.5px;font-weight:600;margin:4px 8px 4px 0;"
+    )
+    return (
+        '<section style="margin:34px 0;">'
+        '<h2 style="font-size:18px;font-weight:700;color:#262626;margin:0 0 6px;letter-spacing:-0.01em;">전체 코스 한눈에 보기</h2>'
+        f'<p style="margin:0 0 14px;font-size:13px;color:#736c63;padding-bottom:10px;border-bottom:1px solid #eae4db;">{html.escape(title)}에 포함된 {len(stops)}개 경유지 위치를 번호 순서대로 모았어요. 핀을 누르면 상세 위치를 바로 확인할 수 있어요.</p>'
+        f'<div id="{html.escape(map_dom_id)}" style="width:100%;height:380px;border-radius:14px;overflow:hidden;border:1px solid #eae4db;background:#faf8f5;">'
+        f'<iframe title="{html.escape(title)} 전체 코스 지도" src="{fallback_osm_url}" '
+        'style="width:100%;height:380px;border:0;display:block;" loading="lazy"></iframe>'
+        "</div>"
+        '<div style="margin-top:14px;">'
+        f'<a href="{google_dir_url}" target="_blank" rel="noopener noreferrer" style="{btn_style}background:#3d5a4c;color:#ffffff;">구글 지도로 전체 경로 보기</a>'
+        "</div>"
+        f'<div style="margin-top:10px;line-height:1.9;">{chips_html}</div>'
+        f"{script_html}"
         "</section>"
     )
 
@@ -1200,13 +1337,20 @@ def generate_blog_post(
     if hero_photographer:
         photo_photographers.insert(0, hero_photographer)
 
-    # 6. 무료 지도 및 길찾기
-    map_html = _render_map_html(
-        title=title,
-        addr1=addr1,
-        mapx=common.get("mapx"),
-        mapy=common.get("mapy"),
-    )
+    # 6. 무료 지도 및 길찾기 (여정은 전체 경유지 통합 지도, 일반 장소/미식은 단일 지도)
+    if ctype == "25":
+        map_html = _render_course_overview_map_html(
+            title=title,
+            info_list=info_list,
+            content_id=content_id,
+        )
+    else:
+        map_html = _render_map_html(
+            title=title,
+            addr1=addr1,
+            mapx=common.get("mapx"),
+            mapy=common.get("mapy"),
+        )
 
     # 7. 마무리 문장 + 공공누리/촬영자 통합 출처 푸터
     closing_html = (
