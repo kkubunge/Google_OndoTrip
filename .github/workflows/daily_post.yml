@@ -9,9 +9,9 @@ on:
         default: "5"
         type: string
       publish:
-        description: "즉시 공개 발행 여부 (기본 true: 자동 공개 게시, false면 임시저장)"
+        description: "즉시 공개 발행 여부 (기본 false: 임시저장, true면 자동 공개 게시)"
         required: false
-        default: true
+        default: false
         type: boolean
       preview_only:
         description: "로컬 HTML 미리보기만 생성 (업로드 없음)"
@@ -110,7 +110,7 @@ jobs:
             python main.py --mode auto --count "${INPUT_COUNT}" --preview-only | tee /tmp/ondotrip_run.log
           else
             ARGS=(--mode auto --count "${INPUT_COUNT}")
-            if [ "$INPUT_PUBLISH" != "false" ]; then
+            if [ "$INPUT_PUBLISH" = "true" ]; then
               ARGS+=(--publish)
             fi
             python main.py "${ARGS[@]}" | tee /tmp/ondotrip_run.log
@@ -184,7 +184,7 @@ jobs:
           elif is_preview:
               mode_desc = f"미리보기 생성 ({os.environ.get('INPUT_COUNT', '5')}건)"
           else:
-              pub = "임시저장(Draft)" if os.environ.get("INPUT_PUBLISH") == "false" else "공개 발행"
+              pub = "공개 발행" if os.environ.get("INPUT_PUBLISH") == "true" else "임시저장(Draft)"
               mode_desc = f"자동 포스팅 {os.environ.get('INPUT_COUNT', '5')}건 ({pub})"
 
           msg_lines = [
